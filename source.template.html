@@ -1,0 +1,236 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>맵 탈출 · 최준서</title>
+<style>
+:root{color-scheme:dark;--ink:#101a2b;--paper:#ebedf2;--cyan:#73dcf0;--gold:#e9cb83;--red:#ec786f}*{box-sizing:border-box}body{margin:0;overflow:hidden;background:#101827;color:var(--paper);font-family:"Malgun Gothic",system-ui,sans-serif}button,input{font:inherit}button{cursor:pointer;border:1px solid #718398;background:#203149;color:#edf5ff;border-radius:10px;padding:13px 24px;transition:.15s}button:hover{border-color:var(--cyan);background:#294459}button:disabled{opacity:.35;cursor:wait}.primary{background:#78dbe8;color:#0f2435;border:0;font-weight:800}.primary:hover{background:#b3f3ee;color:#122438}#stage{width:100vw;height:100vh;display:block}canvas{display:block;outline:none}.hud{position:fixed;inset:0;pointer-events:none}#topbar{display:flex;justify-content:space-between;gap:20px;padding:20px 25px;align-items:start}.brand{font-size:13px;letter-spacing:.18em;color:#9fb3cc}.title{font-weight:800;font-size:23px;letter-spacing:.08em;margin-top:5px}#vitals{background:#132135d9;border:1px solid #3a4c61;border-radius:13px;padding:13px 18px;min-width:270px;box-shadow:0 8px 32px #0003}.heart{font-size:22px;letter-spacing:3px;color:var(--red)}#coins{color:var(--gold);font-size:15px}#stats{font-size:12px;color:#c5d9e8;margin-top:5px}#mapbox{padding:10px;background:#101b2bdd;border:1px solid #405064;border-radius:12px}#minimap{width:180px;height:126px}#maplegend{font-size:10px;color:#a7b8cc;text-align:center;margin-top:4px}#objective{position:absolute;top:22px;left:50%;transform:translateX(-50%);text-align:center;max-width:40%;font-size:14px;color:#dce9f4}#floorlabel{display:block;font-size:23px;font-weight:bold;color:var(--gold);margin-bottom:7px}#roomlabel{color:#9ab7c8}#bottom{position:absolute;bottom:16px;left:20px;right:20px;display:flex;align-items:end;justify-content:space-between;gap:12px}.keys{font-size:12px;line-height:1.8;color:#a9bfd2;background:#111d2de0;padding:10px 14px;border-radius:10px}kbd{color:#eef9ff;border:1px solid #53667c;border-radius:4px;padding:2px 5px;margin:0 2px}#inventory{font-size:13px;color:var(--gold);max-width:50%;text-align:right}#toast{position:absolute;top:132px;left:50%;transform:translateX(-50%);background:#13263bf2;border:1px solid #83c7d7;border-radius:10px;padding:12px 22px;text-align:center;font-size:15px;opacity:0;transition:opacity .16s;max-width:72%;box-shadow:0 10px 30px #0004}#toast.show{opacity:1}.doorlabel{position:absolute;color:#d9edff;background:#132133e0;border:1px solid #73859a;border-radius:6px;font-size:12px;padding:5px 10px;transform:translate(-50%,-50%);white-space:nowrap}.doorlabel.locked{color:#f1a79d;border-color:#a5585d}.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 50%,#101a27bb,#070d17ee);z-index:5;backdrop-filter:blur(4px)}.overlay.hidden{display:none}.card{width:min(660px,92vw);padding:34px 42px;background:linear-gradient(145deg,#203247f5,#111e31f7);border:1px solid #526680;border-radius:21px;box-shadow:0 30px 110px #0008;text-align:center}.kicker{font-size:12px;letter-spacing:.2em;color:#84d9e4}.card h1{font-size:52px;letter-spacing:.13em;margin:12px 0 10px}.card h2{font-size:36px;margin:13px 0}.card p{color:#bcd0e3;line-height:1.9;font-size:15px;margin:10px 0}.lead{color:#e9e2c9!important}.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:24px 0;text-align:left}.controls div{padding:12px 15px;background:#102035a8;border:1px solid #3c5267;border-radius:10px;font-size:13px;line-height:1.9}.controls strong{display:block;color:var(--cyan);font-size:15px}.seedrow{margin:17px 0;color:#93aabe;font-size:12px}.seedrow input{width:125px;margin-left:8px;padding:8px 10px;border:1px solid #465e74;border-radius:6px;background:#122339;color:white}#loadnote{font-size:12px;color:#89abbc}.fine{font-size:11px!important;color:#7f96ae!important}#resultStats{background:#12243a;padding:14px;border-radius:10px;margin:18px 0;line-height:1.9;color:#c7dfeb;font-size:14px}.buttons{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}#flash{position:fixed;inset:0;pointer-events:none;box-shadow:inset 0 0 80px #f35757;opacity:0;transition:opacity .15s;z-index:3}#transition{position:fixed;inset:0;pointer-events:none;background:#142235;opacity:0;z-index:4;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#a7ebf2;font-size:32px;letter-spacing:.15em;transition:opacity .35s}#transition small{font-size:14px;margin-top:13px;color:#abc1d8}.notice{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:#718ba7}#fatal{display:none;position:fixed;inset:20%;background:#332433;padding:35px;z-index:10;color:#ffd0cc;line-height:1.8;border:1px solid #f89797;border-radius:16px}#mute{pointer-events:auto;padding:7px 12px;font-size:12px;margin-top:8px;background:#14253a}#crosshair{position:fixed;width:17px;height:17px;border:1px solid #abf8ff;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);display:none;z-index:2}#crosshair:before,#crosshair:after{content:"";position:absolute;background:#abf8ff}#crosshair:before{height:1px;width:25px;top:7px;left:-5px}#crosshair:after{width:1px;height:25px;left:7px;top:-5px}
+@media(max-width:900px){#topbar{padding:10px}#vitals{min-width:200px;padding:10px}#minimap{width:130px;height:110px}#objective{top:15px;font-size:12px}#floorlabel{font-size:19px}#bottom{bottom:10px;left:10px;right:10px}.keys{font-size:10px}.card{padding:25px}.card h1{font-size:40px}.controls{margin:14px 0}}
+</style></head><body>
+<div id="stage"></div><div class="hud" id="hud"><div id="topbar"><div><div id="vitals"><div class="brand">최준서 · 꿈속 방 탐험</div><div class="title">맵 탈출</div><div><span class="heart" id="hearts">♥♥♥♥♥♥</span> <span id="coins">◆ 0</span></div><div id="stats">공격 1 · 초당 2.9발</div></div><button id="mute">소리 켜짐</button></div><div id="mapbox"><canvas id="minimap" width="360" height="252"></canvas><div id="maplegend">● 현재 · ★ 강화 · + 쉼터 · ◇ 출구</div></div></div><div id="objective"><span id="floorlabel">1 / 3 층</span><span id="roomlabel">꿈의 첫 방</span></div><div id="toast"></div><div id="doorlabels"></div><div id="bottom"><div class="keys"><kbd>W A S D</kbd> 이동 &nbsp; <kbd>마우스 누르기</kbd> / <kbd>방향키</kbd> 공격<br><kbd>E</kbd> 출구·쉼터 &nbsp; <kbd>Esc</kbd> 잠시 멈춤</div><div id="inventory">아직 획득한 강화가 없습니다</div></div></div>
+<div id="flash"></div><div id="crosshair"></div><div id="transition"></div>
+<div class="overlay" id="startOverlay"><div class="card"><div class="kicker">DREAM ROOMS · 짧은 탐험</div><h1>맵 탈출</h1><p class="lead">길을 고르고, 위험을 피하고, 더 강해져 다음 층으로.</p><p>같은 출구로 향해도 방의 연결과 보상은 매번 달라집니다.<br>체력이 부족하면 쉼터로, 힘이 필요하면 샛길로.</p><div class="controls"><div><strong>이동과 공격은 따로</strong><kbd>W A S D</kbd> 이동<br>마우스로 조준해 누르기 / <kbd>↑↓←→</kbd> 공격</div><div><strong>선택과 목표</strong>적을 정리하면 문이 열립니다.<br><kbd>E</kbd> 다음 층 · 코인으로 회복</div></div><p class="lead">목표: 3층 도달 &nbsp;·&nbsp; 체력 0이면 실패</p><div class="seedrow">같은 꿈 다시 찾기 <input id="seedInput" aria-label="지도 시드" value="1010" maxlength="16"></div><button class="primary" id="start" disabled>꿈에 들어가기</button><p id="loadnote">3D 모델과 동작을 준비하고 있습니다…</p><p class="fine">최준서 · 1학년 4반 24번 / 2~5분 시험 구간<br>목표 3층·능력 수치·조작은 이번 시제품의 시험 가정입니다.</p></div></div>
+<div class="overlay hidden" id="resultOverlay"><div class="card"><div class="kicker" id="resultKicker">이번 꿈의 기록</div><h2 id="resultTitle"></h2><p id="resultReason"></p><div id="resultStats"></div><div class="buttons"><button class="primary" id="sameSeed">같은 꿈 다시</button><button id="newSeed">새로운 꿈</button></div><p class="fine">재시작하면 체력·코인·강화·적과 방 상태가 모두 초기화됩니다.</p></div></div>
+<div class="overlay hidden" id="pauseOverlay"><div class="card"><div class="kicker">PAUSE</div><h2>잠시 숨 고르기</h2><p>WASD 이동 · 마우스를 누른 채 조준 · 방향키 공격<br>별 표시 방에는 강화, + 방에는 코인 회복이 있습니다.</p><button class="primary" id="resume">계속 탐험</button></div></div>
+<div id="fatal"></div>
+<!--OFFLINE_RUNTIME-->
+<!--EMBEDDED_ASSETS-->
+<script>
+/* DreamMap v1: standalone deterministic 8-room grid; no DOM, assets or network.
+ * Prototype assumptions, not student-confirmed room counts or balance values.
+ * Coordinates: N=(0,-1), E=(1,0), S=(0,1), W=(-1,0).
+ */
+(function (global) {
+  'use strict';
+  const DIRS = Object.freeze([
+    { key: 'N', dx: 0, dy: -1, opposite: 'S' },
+    { key: 'E', dx: 1, dy: 0, opposite: 'W' },
+    { key: 'S', dx: 0, dy: 1, opposite: 'N' },
+    { key: 'W', dx: -1, dy: 0, opposite: 'E' }
+  ]);
+
+  function seedNumber(seed) {
+    if (typeof seed === 'number' && Number.isFinite(seed)) return Math.trunc(seed) >>> 0;
+    const text = seed === undefined ? '0' : String(seed);
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  // Mulberry32: every call returns a finite number in [0, 1).
+  function rng(seed) {
+    let state = seedNumber(seed);
+    return function next() {
+      state = (state + 0x6D2B79F5) | 0;
+      let value = Math.imul(state ^ (state >>> 15), 1 | state);
+      value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function shuffled(values, random) {
+    const result = values.slice();
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  const distance = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+
+  // A new cell must touch exactly its parent: no collisions or accidental doors.
+  function canAttach(cell, parentIndex, cells) {
+    return cells.every((other, index) => {
+      const d = distance(cell, other);
+      return index === parentIndex ? d === 1 : d > 1;
+    });
+  }
+
+  function candidates(cells, parentIndices, random) {
+    const result = [];
+    for (const parent of shuffled(parentIndices, random)) {
+      for (const dir of shuffled(DIRS, random)) {
+        const cell = { x: cells[parent].x + dir.dx, y: cells[parent].y + dir.dy, parent };
+        if (canAttach(cell, parent, cells)) result.push(cell);
+      }
+    }
+    return shuffled(result, random);
+  }
+
+  function generate(seed, floor) {
+    const normalizedSeed = seedNumber(seed);
+    const n = Number(floor);
+    const currentFloor = Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+    const random = rng(normalizedSeed + '|floor|' + currentFloor);
+    const cells = [{ x: 0, y: 0, parent: -1 }];
+
+    // Five-room main path = four moves. Three optional rooms are a risk→treasury
+    // branch and a separate sanctuary leaf. The exit remains a farthest room.
+    function addOptionalBranches() {
+      for (const risk of candidates(cells, [1, 2], random)) {
+        cells.push(risk); // id 5, distance <= 3
+        for (const treasure of candidates(cells, [5], random)) {
+          cells.push(treasure); // id 6, distance <= 4
+          const sanctuaries = candidates(cells, [1, 2, 3], random);
+          if (sanctuaries.length) {
+            cells.push(sanctuaries[0]); // id 7, distance <= 4
+            return true;
+          }
+          cells.pop();
+        }
+        cells.pop();
+      }
+      return false;
+    }
+
+    function buildMainPath() {
+      if (cells.length === 5) return addOptionalBranches();
+      const parent = cells.length - 1;
+      for (const cell of candidates(cells, [parent], random)) {
+        cells.push(cell);
+        if (buildMainPath()) return true;
+        cells.pop();
+      }
+      return false;
+    }
+
+    if (!buildMainPath()) throw new Error('DreamMap could not construct its connected 8-room layout.');
+
+    const thirdMainType = random() < 0.5 ? 'combat' : 'risk';
+    const types = ['start', 'combat', 'combat', thirdMainType, 'exit', 'risk', 'treasury', 'sanctuary'];
+    const upgrade = ['damage', 'fireRate', 'maxHealth'][Math.floor(random() * 3)];
+    const rewards = [
+      null,
+      { kind: 'coins', amount: 1 + Math.floor(random() * 2) },
+      { kind: 'coins', amount: 1 + Math.floor(random() * 2) },
+      { kind: 'coins', amount: thirdMainType === 'risk' ? 3 : 2 },
+      null,
+      { kind: 'coins', amount: 3 },
+      { kind: 'upgrade', upgrade, amount: 1 },
+      { kind: 'heal', amount: 2, cost: 3 }
+    ];
+    const rooms = cells.map((cell, id) => ({
+      id, x: cell.x, y: cell.y, type: types[id], neighbors: {},
+      reward: rewards[id], rewards: rewards[id] ? [rewards[id]] : [],
+      visited: false, cleared: false
+    }));
+    for (let id = 1; id < cells.length; id++) {
+      const parent = cells[id].parent;
+      const dir = DIRS.find(d => cells[parent].x + d.dx === cells[id].x && cells[parent].y + d.dy === cells[id].y);
+      rooms[parent].neighbors[dir.key] = id;
+      rooms[id].neighbors[dir.opposite] = parent;
+    }
+
+    return {
+      rooms, startId: 0, exitId: 4, floor: currentFloor, seed: normalizedSeed,
+      mainPath: [0, 1, 2, 3, 4],
+      optionalRoomIds: [5, 6, 7],
+      schemaVersion: 1
+    };
+  }
+
+  global.DreamMap = Object.freeze({ generate, rng });
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(async()=>{'use strict';
+const {THREE,cloneSkinned,loadEmbeddedGLB}=Game3D;
+const $=id=>document.getElementById(id),TAU=Math.PI*2,clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const labels={start:'꿈의 첫 방',combat:'낯선 발소리',risk:'짙은 꿈 · 위험과 큰 보상',treasury:'별의 서고 · 강화',sanctuary:'고요한 쉼터',exit:'다음 층의 문'};
+const dirVec={N:[0,-1],E:[1,0],S:[0,1],W:[-1,0]},opposite={N:'S',S:'N',E:'W',W:'E'};
+let scene,camera,renderer,hero,roomModel,roomGroup=new THREE.Group(),fxGroup=new THREE.Group();
+let templates={},doors=[],enemies=[],shots=[],effects=[],map,current,keys=new Set(),mouseDown=false,pointerKnown=false;
+let elapsed=0,clock=new THREE.Clock(),roomCooldown=0,toastTime=0,shake=0,damageFlash=0,transitionTime=0,waveDelay=0,wave=0,totalWaves=0;
+let seed='1010',floor=1,mode='loading',lastMode='play',playTime=0,roomVisits=0,clears=0,kills=0,upgrades=[],events=[],floorMaps=[];
+let hp=6,maxHp=6,coins=0,damage=1,fireInterval=.34,fireTimer=0,invuln=0,heroSpecial=0,aim=new THREE.Vector2(0,-1),moveDir=new THREE.Vector2(0,-1),audio,muted=false;
+let worldPointer=new THREE.Vector3(),pointer=new THREE.Vector2(),ray=new THREE.Raycaster(),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+let rng=()=>.5,assetsUsed=new Set(),motionsUsed=new Set(),animationsStarted={};
+const record=(type,data={})=>{events.push({type,time:+playTime.toFixed(3),floor,room:current?.id,...data});if(events.length>1000)events.shift()};
+function beep(freq=440,len=.1,kind='sine',gain=.025){if(muted||!audio)return;const o=audio.createOscillator(),g=audio.createGain();o.type=kind;o.frequency.setValueAtTime(freq,audio.currentTime);o.frequency.exponentialRampToValueAtTime(Math.max(60,freq*.6),audio.currentTime+len);g.gain.setValueAtTime(gain,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+len);o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+len)}
+function say(text,duration=3){$('toast').textContent=text;$('toast').classList.add('show');toastTime=duration}
+function model(id,skin=false){assetsUsed.add(id);return skin?cloneSkinned(templates[id].scene):templates[id].scene.clone(true)}
+function actor(id){const obj=model(id,true),mixer=new THREE.AnimationMixer(obj),actions={};for(const c of templates[id].animations)actions[c.name]=mixer.clipAction(c);const a={id,obj,mixer,actions,clip:null,dead:false};a.play=(name,once=false,force=false)=>{if(!actions[name]||a.clip===name&&!force)return;for(const act of Object.values(actions))act.fadeOut(.08);const ac=actions[name];ac.reset().setLoop(once?THREE.LoopOnce:THREE.LoopRepeat,once?1:Infinity);ac.clampWhenFinished=once;ac.enabled=true;ac.setEffectiveWeight(1).setEffectiveTimeScale(1).fadeIn(.08).play();a.clip=name;motionsUsed.add(id+'/'+name);animationsStarted[id+'/'+name]=(animationsStarted[id+'/'+name]||0)+1};a.play('Idle');return a}
+function ring(x,z,color=0x73dcf0,size=.45,life=.7){const mesh=new THREE.Mesh(new THREE.RingGeometry(size*.82,size,32),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.7,side:THREE.DoubleSide,depthWrite:false}));mesh.rotation.x=-Math.PI/2;mesh.position.set(x,.045,z);fxGroup.add(mesh);effects.push({mesh,time:life,total:life});return mesh}
+function disposeFx(e){e.mesh.removeFromParent();e.mesh.geometry?.dispose();e.mesh.material?.dispose()}
+function updateHUD(){const h='♥'.repeat(Math.max(0,hp))+'♡'.repeat(Math.max(0,maxHp-hp));$('hearts').textContent=h;$('coins').textContent='◆ '+coins;$('stats').textContent=`공격 ${damage} · 초당 ${(1/fireInterval).toFixed(1)}발 · 체력 ${hp}/${maxHp}`;$('floorlabel').textContent=`${floor} / 3 층 · 시험`;$('roomlabel').textContent=current?labels[current.type]+(roomLocked()?` · ${wave}/${totalWaves} 무리`:''):'';$('inventory').textContent=upgrades.length?upgrades.map(x=>x.title).join('  /  '):'아직 획득한 강화가 없습니다';drawMap()}
+function drawMap(){if(!map)return;const c=$('minimap').getContext('2d'),w=360,h=252;c.clearRect(0,0,w,h);let xs=map.rooms.map(r=>r.x),ys=map.rooms.map(r=>r.y),cx=(Math.min(...xs)+Math.max(...xs))/2,cy=(Math.min(...ys)+Math.max(...ys))/2,step=Math.min(52,280/(Math.max(...xs)-Math.min(...xs)+1),195/(Math.max(...ys)-Math.min(...ys)+1));const seen=new Set(map.rooms.filter(r=>r.visited).map(r=>r.id));for(const r of map.rooms)if(r.visited)for(const id of Object.values(r.neighbors))seen.add(id);const pos=r=>[180+(r.x-cx)*step,124+(r.y-cy)*step];c.lineWidth=3;for(const r of map.rooms){if(!seen.has(r.id))continue;const [x,y]=pos(r);for(const id of Object.values(r.neighbors)){if(!seen.has(id))continue;const [xx,yy]=pos(map.rooms.find(q=>q.id===id));c.strokeStyle='#526579';c.beginPath();c.moveTo(x,y);c.lineTo(xx,yy);c.stroke()}}for(const r of map.rooms){if(!seen.has(r.id))continue;const [x,y]=pos(r);c.fillStyle=r.id===current?.id?'#73dcf0':r.cleared?'#314b62':'#182737';c.strokeStyle=r.type==='risk'?'#e58980':r.type==='treasury'?'#e9cb83':'#8195ae';c.lineWidth=2;c.fillRect(x-15,y-12,30,24);c.strokeRect(x-15,y-12,30,24);c.fillStyle=r.id===current?.id?'#182b39':'#edf3fc';c.font='bold 18px sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText(({start:'●',treasury:'★',sanctuary:'+',exit:'◇',risk:'!'})[r.type]||'·',x,y)} }
+function roomLocked(){return !!current&&!current.cleared&&(current.type==='combat'||current.type==='risk'||current.type==='exit')}
+function clearProjectiles(){for(const s of shots)s.obj.removeFromParent();shots=[]}
+function clearRoomObjects(){scene.remove(roomGroup);roomGroup=new THREE.Group();scene.add(roomGroup);enemies=[];doors=[];clearProjectiles();for(const e of effects)disposeFx(e);effects=[];$('doorlabels').replaceChildren()}
+function addDoor(d,id){const a=actor('ordinary_door'),v=dirVec[d];a.obj.position.set(v[0]*6.32,.01,v[1]*4.82);a.obj.rotation.y={N:0,S:Math.PI,E:-Math.PI/2,W:Math.PI/2}[d];a.obj.scale.setScalar(.86);a.play(roomLocked()?'Door_Close':'Door_Open',true,true);if(roomLocked()){a.actions.Door_Close.time=1;a.mixer.update(0)}roomGroup.add(a.obj);let el=document.createElement('div');el.className='doorlabel';$('doorlabels').appendChild(el);doors.push({dir:d,id,actor:a,label:el});}
+function closeUnusedGaps(){for(const d of Object.keys(dirVec)){if(current.neighbors[d]!==undefined)continue;const v=dirVec[d],height=d==='S'?.48:1.5;for(let row=0;row<(d==='S'?1:3);row++){const block=new THREE.Mesh(new THREE.BoxGeometry(2.36,height/(d==='S'?1:3)-.035,.56),new THREE.MeshStandardMaterial({color:0x384962,roughness:.9}));block.position.set(v[0]*6.32,(row+.5)*height/(d==='S'?1:3),v[1]*4.82);if(d==='E'||d==='W')block.rotation.y=Math.PI/2;roomGroup.add(block)}}}
+function createPickup(kind,x,z,extra={}){return {kind,x,z,...extra,collected:false}}
+function displayPickups(){for(const p of current.pickups||[]){if(p.collected)continue;const key={coins:'coin',heal:'health_pickup',upgrade:'upgrade_book'}[p.kind]||'coin';p.obj=model(key);p.obj.position.set(p.x,.12,p.z);p.obj.scale.setScalar(p.kind==='upgrade'?.8:.65);roomGroup.add(p.obj);p.phase=rng()*TAU}}
+function grantUpgrade(kind){let title,detail;if(kind==='fireRate'){fireInterval=Math.max(.16,fireInterval*.72);title='빠른 울림';detail=`발사 속도 → 초당 ${(1/fireInterval).toFixed(1)}발`}else if(kind==='maxHealth'){maxHp+=2;hp=Math.min(maxHp,hp+2);title='단단한 꿈';detail=`최대 체력 → ${maxHp}, 체력 +2`}else{damage++;title='공명 탄';detail=`공격력 ${damage-1} → ${damage}`}upgrades.push({kind,title});hero.play('Pickup',true,true);heroSpecial=1.15;record('upgrade',{kind,damage,fireInterval,maxHp});ring(hero.obj.position.x,hero.obj.position.z,0xe9cb83,1,1.1);say(`${title} 획득 · ${detail}`,4);beep(880,.3,'sine',.055);updateHUD()}
+function collect(p){p.collected=true;p.obj?.removeFromParent();if(p.kind==='coins'){coins+=p.amount||1;beep(1050,.07);record('coin',{coins})}else if(p.kind==='heal'){if(hp>=maxHp){p.collected=false;roomGroup.add(p.obj);return}hp=Math.min(maxHp,hp+(p.amount||1));hero.play('Pickup',true,true);heroSpecial=.9;beep(650,.22);say('체력이 회복되었습니다');record('heal',{hp})}else grantUpgrade(p.upgrade||'damage');updateHUD()}
+function spawnWave(){wave++;const count=current.type==='exit'?3:current.type==='risk'?(wave===1?4:3):(wave===1?3:floor===1?3:4);for(let i=0;i<count;i++){const a=actor('enemy');let x,z;for(let attempt=0;attempt<30;attempt++){x=(rng()-.5)*8;z=(rng()-.5)*5.6;if(Math.hypot(x-hero.obj.position.x,z-hero.obj.position.z)>2.5)break}a.obj.position.set(x,.08,z);a.obj.scale.setScalar(1.12);a.hp=(floor===1?4:5)+(current.type==='risk'?1:0);a.maxHp=a.hp;a.speed=.65+rng()*.28;a.fire=1.4+rng()*1.4;a.phase=0;a.tell=0;a.hit=0;a.age=0;a.style=i%3===0?'chase':'shooter';a.volley=current.type==='risk'&&i===0?'radial':'aim';a.telegraph=new THREE.Mesh(new THREE.RingGeometry(.5,.57,32),new THREE.MeshBasicMaterial({color:0xec786f,side:THREE.DoubleSide,transparent:true,opacity:0}));a.telegraph.rotation.x=-Math.PI/2;a.telegraph.position.y=.06;scene.add(a.telegraph);a.bar=new THREE.Mesh(new THREE.PlaneGeometry(.75,.065),new THREE.MeshBasicMaterial({color:0xec786f,side:THREE.DoubleSide,depthTest:false}));a.bar.rotation.x=-Math.PI/2;a.bar.position.y=1.6;roomGroup.add(a.bar);roomGroup.add(a.obj);enemies.push(a);ring(x,z,0xeaa18b,.65,.7)}record('wave',{wave,count});updateHUD()}
+function enterRoom(id,from=null){if(current)for(const a of enemies){a.telegraph?.removeFromParent()}clearRoomObjects();current=map.rooms.find(r=>r.id===id);current.visited=true;roomVisits++;roomCooldown=.7;heroSpecial=0;hero.obj.visible=true;hero.obj.position.set(0,0,1.7);if(from){const v=dirVec[from];hero.obj.position.set(v[0]*4.88,0,v[1]*3.38)}hero.play('Idle',false,true);wave=0;waveDelay=0;totalWaves=current.type==='exit'?1:2;for(const [d,n] of Object.entries(current.neighbors))addDoor(d,n);
+ closeUnusedGaps();if(!current.initialized){current.initialized=true;current.pickups=[];if(['start','treasury','sanctuary'].includes(current.type))current.cleared=true;if(current.type==='treasury')current.pickups=[createPickup('upgrade',0,-.5,{upgrade:current.reward?.upgrade||'damage'})]}
+ if(roomLocked()){spawnWave();say(current.type==='risk'?'짙은 꿈 · 더 큰 위험, 강화 보상':'적을 피하며 공격하세요 · 정리하면 문이 열립니다',2.8)}else{say(labels[current.type],2);for(const d of doors)d.actor.play('Door_Open',true,true)}
+ if(current.type==='exit'){current.portal=model('floor_exit');current.portal.position.set(0,0,-1.8);current.portal.scale.setScalar(.65);roomGroup.add(current.portal)}
+ if(current.type==='sanctuary'){let shrine=model('health_pickup');shrine.position.set(0,.2,-.5);shrine.scale.setScalar(1.4);roomGroup.add(shrine);ring(0,-.5,0x86e8ce,1.2,2);say('고요한 쉼터 · 가운데에서 E · 코인 3개로 체력 2 회복',4)}
+ displayPickups();record('roomEnter',{id,roomType:current.type,from,neighbors:current.neighbors});updateHUD();}
+function rewardRoom(){if(current.cleared)return;current.cleared=true;clears++;for(const d of doors)d.actor.play('Door_Open',true,true);current.pickups=current.pickups||[];for(let i=0;i<(current.type==='risk'?5:3);i++)current.pickups.push(createPickup('coins',(i-1)*.42,.45,{amount:1}));if(current.type==='risk')current.pickups.push(createPickup('upgrade',0,-.9,{upgrade:current.reward?.upgrade||'damage'}));else if(current.type!=='exit'&&rng()<.65)current.pickups.push(createPickup('heal',.9,-.6,{amount:1}));displayPickups();beep(570,.2);ring(0,0,0xe9cb83,2,1);say(current.type==='exit'?'층 출구가 열렸습니다 · 빛나는 문 앞에서 E':'방 정리! 보상을 챙기고 다음 길을 고르세요',3);record('roomClear',{clears});updateHUD()}
+function shoot(x,z,dx,dz,friendly){const id=friendly?'player_projectile':'enemy_projectile',obj=model(id);obj.scale.setScalar(friendly?.7:.82);obj.position.set(x,.78,z);obj.rotation.y=Math.atan2(dx,dz);roomGroup.add(obj);shots.push({obj,x,z,dx,dz,speed:friendly?9:2.7+(floor-1)*.3,life:friendly?1.45:5.5,friendly,damage:friendly?damage:1});}
+function fireHero(){const p=hero.obj.position;shoot(p.x+aim.x*.52,p.z+aim.y*.52,aim.x,aim.y,true);beep(450+Math.random()*60,.045,'sine',.014);if(heroSpecial<=0&&moveDir.lengthSq()<.01){hero.play('Attack',true,true);heroSpecial=.3}record('shot',{damage});}
+function hurt(reason){if(invuln>0||mode!=='play')return;hp--;invuln=1.25;damageFlash=.26;shake=.2;hero.play('Hit',true,true);heroSpecial=.5;beep(120,.22,'triangle',.06);record('hit',{hp,reason});ring(hero.obj.position.x,hero.obj.position.z,0xec786f,.75,.45);if(hp<=0){hp=0;mode='dying';hero.play('Failure',true,true);transitionTime=1.25;clearProjectiles();record('death',{reason})}updateHUD()}
+function damageEnemy(e,n){if(e.dead)return;record('enemyDamage',{before:e.hp,after:e.hp-n,damage:n,enemyMaxHp:e.maxHp});e.hp-=n;e.hit=.28;e.play('Hit',true,true);ring(e.obj.position.x,e.obj.position.z,0x86e9f7,.42,.2);if(e.hp<=0){e.dead=true;e.age=0;e.play('Death',true,true);e.bar.visible=false;e.telegraph.visible=false;kills++;beep(210,.08);record('kill',{kills})}}
+function updateCombat(dt){for(const e of enemies){e.mixer.update(dt);e.age+=dt;if(e.dead){if(e.age>1)e.obj.visible=false;continue}let p=e.obj.position,dx=hero.obj.position.x-p.x,dz=hero.obj.position.z-p.z,dist=Math.hypot(dx,dz)||1;dx/=dist;dz/=dist;e.obj.rotation.y=Math.atan2(dx,dz);e.hit=Math.max(0,e.hit-dt);e.fire-=dt;if(e.tell>0){e.tell-=dt;e.telegraph.material.opacity=.35+.45*Math.sin(e.tell*26)**2;e.play('Attack',true);if(e.tell<=0){if(e.volley==='radial'){for(let k=0;k<8;k++){let a=k*TAU/8+elapsed*.12;shoot(p.x,p.z,Math.sin(a),Math.cos(a),false)}}else{const angle=Math.atan2(dx,dz),offsets=floor===2?[-.13,0,.13]:[0];for(const off of offsets)shoot(p.x+dx*.35,p.z+dz*.35,Math.sin(angle+off),Math.cos(angle+off),false)}e.fire=2.0+rng()*1.15;e.telegraph.material.opacity=0}}else if(e.fire<.55){e.tell=.55;e.play('Attack',true,true)}else{let velocity=e.style==='chase'?1:dist>4?1:dist<2.5?-.55:0;if(e.hit>0)velocity=0;p.x=clamp(p.x+dx*e.speed*velocity*dt,-5.1,5.1);p.z=clamp(p.z+dz*e.speed*velocity*dt,-3.55,3.55);if(e.hit<=0)e.play(velocity?'Move':'Idle')}
+ e.telegraph.position.set(p.x,.035,p.z);e.bar.position.set(p.x,1.55,p.z);e.bar.scale.x=Math.max(.05,e.hp/e.maxHp);if(dist<.65)hurt('적에게 부딪혔습니다');if(mode!=='play')return;}
+ for(let i=shots.length-1;i>=0;i--){const s=shots[i];s.life-=dt;s.x+=s.dx*s.speed*dt;s.z+=s.dz*s.speed*dt;s.obj.position.x=s.x;s.obj.position.z=s.z;let hit=false;if(s.friendly){for(const e of enemies){if(!e.dead&&Math.hypot(s.x-e.obj.position.x,s.z-e.obj.position.z)<.52){damageEnemy(e,s.damage);hit=true;break}}}else if(Math.hypot(s.x-hero.obj.position.x,s.z-hero.obj.position.z)<.37){hurt('적의 탄에 맞았습니다');if(mode!=='play')return;hit=true}if(hit||s.life<0||Math.abs(s.x)>5.8||Math.abs(s.z)>4.15){s.obj.removeFromParent();shots.splice(i,1)}}
+ if(roomLocked()&&enemies.every(e=>e.dead)){if(wave<totalWaves){waveDelay+=dt;if(waveDelay>.95){waveDelay=0;spawnWave();say('다음 무리 · 경고 원을 보고 피하세요',1.8)}}else rewardRoom()}}
+function doInteract(){if(mode!=='play'||!current)return;if(current.type==='exit'&&current.cleared&&Math.hypot(hero.obj.position.x,hero.obj.position.z+1.4)<1.75){mode='floorTransition';hero.obj.visible=true;transitionTime=1.35;hero.play('FloorTransition',true,true);record('floorTransitionStart',{from:floor,to:floor+1});clearProjectiles();$('transition').innerHTML=`다음 꿈으로<small>${floor}층 → ${floor+1}층</small>`;beep(750,.6,'sine',.05)}else if(current.type==='sanctuary'&&Math.hypot(hero.obj.position.x,hero.obj.position.z+.5)<1.8){if(hp>=maxHp)say('체력이 가득합니다 · 코인을 아껴 두세요');else if(coins<3)say('회복에는 코인 3개가 필요합니다');else{coins-=3;hp=Math.min(maxHp,hp+2);hero.play('Pickup',true,true);heroSpecial=1.15;record('purchaseHeal',{hp,coins});say('코인 3개 사용 · 체력 +2');beep(720,.3);updateHUD()}}}
+function end(won){mode=won?'won':'lost';keys.clear();mouseDown=false;clearProjectiles();$('resultTitle').textContent=won?'목표 층에 도달했습니다':'꿈이 잠시 흐려졌습니다';$('resultReason').textContent=won?'더 강해진 당신은 다음 꿈으로 나아갑니다.':'체력이 0이 되었습니다. 경고 원과 탄 사이의 틈을 기억해 보세요.';$('resultKicker').textContent=won?'3층 도달 · 이번 시험 구간 성공':'체력 0 · 다시 찾을 수 있는 길';$('resultStats').innerHTML=`도달 <b>${floor}층</b> · 탐험한 방 <b>${roomVisits}</b> · 처치 <b>${kills}</b><br>시간 <b>${Math.floor(playTime/60)}분 ${Math.floor(playTime%60)}초</b> · 코인 <b>${coins}</b> · 강화 <b>${upgrades.length}개</b><br>꿈 번호 <b>${seed.replace(/[<>]/g,'')}</b>`;$('resultOverlay').classList.remove('hidden');$('transition').style.opacity=0;record(won?'success':'failure',{playTime,roomVisits,kills,upgrades:upgrades.length});}
+function newFloor(){map=DreamMap.generate(seed,floor);rng=DreamMap.rng(seed+':combat:'+floor);floorMaps.push({floor,layout:map.rooms.map(r=>({id:r.id,x:r.x,y:r.y,type:r.type,neighbors:r.neighbors})),exitId:map.exitId});enterRoom(map.startId);record('floorCreated',{signature:JSON.stringify(floorMaps[floorMaps.length-1].layout)});}
+function start(newSeed){seed=String(newSeed||'1010').slice(0,16);mode='play';floor=1;hp=maxHp=6;coins=0;damage=1;fireInterval=.34;playTime=0;roomVisits=clears=kills=0;fireTimer=invuln=heroSpecial=0;upgrades=[];events=[];floorMaps=[];keys.clear();mouseDown=false;aim.set(0,-1);hero.obj.visible=true;hero.obj.rotation.y=0;$('startOverlay').classList.add('hidden');$('resultOverlay').classList.add('hidden');$('pauseOverlay').classList.add('hidden');$('transition').style.opacity=0;$('hud').style.opacity=1;newFloor();record('start',{seed});say('인접한 방을 살펴보세요 · 별 ★ 은 강화, + 는 회복',4);updateHUD();}
+function updateHeroMixer(dt){const head=hero.obj.getObjectByName('Head');if(head&&hero.headBase)head.quaternion.copy(hero.headBase);hero.mixer.update(dt);if(head){if(!hero.headBase)hero.headBase=new THREE.Quaternion();hero.headBase.copy(head.quaternion)}}
+function updateHero(dt){invuln=Math.max(0,invuln-dt);heroSpecial=Math.max(0,heroSpecial-dt);fireTimer-=dt;roomCooldown=Math.max(0,roomCooldown-dt);let mx=(keys.has('KeyD')?1:0)-(keys.has('KeyA')?1:0),mz=(keys.has('KeyS')?1:0)-(keys.has('KeyW')?1:0);moveDir.set(mx,mz);if(moveDir.lengthSq()>0)moveDir.normalize();let p=hero.obj.position;p.x=clamp(p.x+moveDir.x*3.45*dt,-5.64,5.64);p.z=clamp(p.z+moveDir.y*3.45*dt,-4.11,4.11);let ax=(keys.has('ArrowRight')?1:0)-(keys.has('ArrowLeft')?1:0),az=(keys.has('ArrowDown')?1:0)-(keys.has('ArrowUp')?1:0),firing=ax||az||mouseDown;
+ if(ax||az)aim.set(ax,az).normalize();else if(mouseDown&&pointerKnown){ray.setFromCamera(pointer,camera);if(ray.ray.intersectPlane(plane,worldPointer))aim.set(worldPointer.x-p.x,worldPointer.z-p.z).normalize()}
+ if(moveDir.lengthSq()>.01)hero.obj.rotation.y=Math.atan2(moveDir.x,moveDir.y);else if(firing)hero.obj.rotation.y=Math.atan2(aim.x,aim.y);
+ if(firing&&fireTimer<=0){fireHero();fireTimer=fireInterval}
+ if(heroSpecial<=0)hero.play(moveDir.lengthSq()>.01?(firing?'StrafeAttack':'Move'):'Idle');if(hero.clip==='Move'||hero.clip==='StrafeAttack')hero.actions[hero.clip].timeScale=1.08;
+ updateHeroMixer(dt);if(firing&&hero.clip==='StrafeAttack'){const head=hero.obj.getObjectByName('Head');if(head){let rel=Math.atan2(aim.x,aim.y)-hero.obj.rotation.y-Math.PI/2;head.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),rel))}}hero.obj.visible=invuln<=0||Math.floor(elapsed*15)%2===0;
+ for(const q of current.pickups||[]){if(q.collected||!q.obj)continue;q.obj.position.y=.1+Math.sin(elapsed*2+q.phase)*.035;if(q.kind==='coins')q.obj.rotation.y=elapsed*.8;if(Math.hypot(q.x-p.x,q.z-p.z)<.63)collect(q)}
+ if(!roomLocked()&&roomCooldown<=0){for(const d of doors){let cross=d.dir==='N'?p.z<-4.03&&Math.abs(p.x)<1.05:d.dir==='S'?p.z>4.03&&Math.abs(p.x)<1.05:d.dir==='E'?p.x>5.52&&Math.abs(p.z)<1.05:p.x<-5.52&&Math.abs(p.z)<1.05;if(cross){enterRoom(d.id,opposite[d.dir]);return}}}}
+function updateLabels(){for(const d of doors){const v=dirVec[d.dir],pos=new THREE.Vector3(v[0]*5.12,.45,v[1]*3.73).project(camera);d.label.style.left=(pos.x*.5+.5)*innerWidth+'px';d.label.style.top=(-pos.y*.5+.5)*innerHeight+'px';const room=map.rooms.find(r=>r.id===d.id);d.label.textContent=roomLocked()?'전투 중 · 잠김':({combat:'전투',risk:'! 위험 · 큰 보상',treasury:'★ 강화',sanctuary:'+ 코인 회복',exit:'◇ 다음 층',start:'첫 방'})[room.type]+(room.cleared?' · 정리됨':'');d.label.classList.toggle('locked',roomLocked());}}
+function frame(){requestAnimationFrame(frame);const dt=Math.min(clock.getDelta(),.045);elapsed+=dt;if(mode==='play'){playTime+=dt;updateHero(dt);if(mode==='play')updateCombat(dt)}else if(mode==='floorTransition'){updateHeroMixer(dt);transitionTime-=dt;$('transition').style.opacity=transitionTime<.75?1:0;if(transitionTime<=0){floor++;record('floorChanged',{floor});if(floor>=3)end(true);else{newFloor();mode='play';$('transition').style.opacity=0;say('연결이 달라진 새 층 · 획득한 강화는 유지됩니다',4);updateHUD()}}}else if(mode==='dying'){updateHeroMixer(dt);transitionTime-=dt;if(transitionTime<=0)end(false)}else if(mode==='menu'){hero?.mixer.update(dt)}
+ if(mode!=='paused'){for(const d of doors)d.actor.mixer.update(dt);for(let i=effects.length-1;i>=0;i--){const e=effects[i];e.time-=dt;e.mesh.scale.setScalar(1+(1-e.time/e.total)*.35);e.mesh.material.opacity=Math.max(0,e.time/e.total*.7);if(e.time<=0){disposeFx(e);effects.splice(i,1)}}}
+ toastTime-=dt;if(toastTime<=0)$('toast').classList.remove('show');damageFlash=Math.max(0,damageFlash-dt);$('flash').style.opacity=damageFlash>0?.65:0;shake=Math.max(0,shake-dt);camera.position.x=shake>0?(Math.random()-.5)*.12:0;updateLabels();renderer.render(scene,camera);}
+function pause(){if(mode==='play'){mode='paused';keys.clear();mouseDown=false;$('pauseOverlay').classList.remove('hidden')}else if(mode==='paused'){mode='play';$('pauseOverlay').classList.add('hidden')}}
+function project(x,z,y=0){const v=new THREE.Vector3(x,y,z).project(camera);return {x:(v.x*.5+.5)*innerWidth,y:(-v.y*.5+.5)*innerHeight}}
+function snapshot(){return {ready:mode!=='loading',protocol:location.protocol,mode,seed,floor,hp,maxHp,coins,damage,fireInterval,playTime,roomVisits,kills,clears,upgrades:upgrades.map(x=>({...x})),room:current?{id:current.id,type:current.type,cleared:current.cleared,neighbors:{...current.neighbors},pickups:(current.pickups||[]).map(p=>({kind:p.kind,x:p.x,z:p.z,collected:p.collected,upgrade:p.upgrade})),wave,totalWaves}:null,hero:hero?{x:hero.obj.position.x,z:hero.obj.position.z,clip:hero.clip,screen:project(hero.obj.position.x,hero.obj.position.z)}:null,enemies:enemies.filter(e=>!e.dead).map(e=>({x:e.obj.position.x,z:e.obj.position.z,hp:e.hp,tell:e.tell,screen:project(e.obj.position.x,e.obj.position.z)})),shots:shots.filter(s=>!s.friendly).map(s=>({x:s.x,z:s.z,dx:s.dx,dz:s.dz})),map:map?JSON.parse(JSON.stringify({startId:map.startId,exitId:map.exitId,mainPath:map.mainPath,rooms:map.rooms.map(r=>({id:r.id,x:r.x,y:r.y,type:r.type,neighbors:r.neighbors,visited:r.visited,cleared:r.cleared}))})):null,events:events.slice(),assetsUsed:[...assetsUsed],motionsUsed:[...motionsUsed],animationsStarted:{...animationsStarted},floorMaps:JSON.parse(JSON.stringify(floorMaps))}}
+try{renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);renderer.setClearColor(0x142334);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.13;$('stage').appendChild(renderer.domElement);renderer.domElement.tabIndex=0;scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x142334,.006);camera=new THREE.OrthographicCamera(-10,10,7,-7,.1,100);camera.position.set(0,19,12);camera.lookAt(0,0,0);scene.add(new THREE.HemisphereLight(0xc7efff,0x27314f,2.6));const key=new THREE.DirectionalLight(0xffe8d8,3);key.position.set(-3,10,6);scene.add(key);const rim=new THREE.PointLight(0x65cfe9,16,20);rim.position.set(1,5,-4);scene.add(rim);const resize=()=>{renderer.setSize(innerWidth,innerHeight);const aspect=innerWidth/innerHeight,h=Math.max(6.2,8.7/aspect);camera.left=-h*aspect;camera.right=h*aspect;camera.top=h;camera.bottom=-h;camera.updateProjectionMatrix()};addEventListener('resize',resize);resize();
+ const loaded=await Promise.all(Object.keys(window.__ASSETS__).map(async id=>[id,await loadEmbeddedGLB(window.__ASSETS__,id)]));templates=Object.fromEntries(loaded);for(const [id,g] of loaded)g.scene.traverse(o=>{if(o.isMesh){o.frustumCulled=false;if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats)m.side=THREE.DoubleSide}}});roomModel=model('room');scene.add(roomModel);scene.add(roomGroup);scene.add(fxGroup);hero=actor('player');hero.obj.position.set(0,0,1);scene.add(hero.obj);mode='menu';$('start').disabled=false;$('loadnote').textContent='준비 완료 · 인터넷 연결 없이 실행됩니다';$('hud').style.opacity=.35;
+ addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','Tab'].includes(e.code))e.preventDefault();if(e.code==='Escape'&&!e.repeat){pause();return}if(mode==='play'){keys.add(e.code);if(e.code==='KeyE'&&!e.repeat)doInteract()}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>{keys.clear();mouseDown=false;if(mode==='play')pause()});renderer.domElement.addEventListener('pointermove',e=>{pointer.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);pointerKnown=true;$('crosshair').style.left=e.clientX+'px';$('crosshair').style.top=e.clientY+'px';$('crosshair').style.display=mode==='play'?'block':'none'});renderer.domElement.addEventListener('pointerdown',e=>{if(e.button===0&&mode==='play'){mouseDown=true;pointer.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);pointerKnown=true;e.preventDefault()}});addEventListener('pointerup',()=>mouseDown=false);addEventListener('contextmenu',e=>e.preventDefault());
+ $('start').onclick=()=>{audio=audio||new (window.AudioContext||window.webkitAudioContext)();audio.resume();start($('seedInput').value)};$('sameSeed').onclick=()=>start(seed);$('newSeed').onclick=()=>{const values=new Uint32Array(1);crypto.getRandomValues(values);start(String(values[0]))};$('resume').onclick=pause;$('mute').onclick=()=>{muted=!muted;$('mute').textContent=muted?'소리 꺼짐':'소리 켜짐'};window.__gameTest=Object.freeze({snapshot});frame();
+}catch(error){mode='error';$('fatal').style.display='block';$('fatal').textContent='3D 게임을 불러오지 못했습니다. Chrome 또는 Edge에서 파일을 다시 열어 주세요.\n'+error.message;console.error(error);window.__gameTest=Object.freeze({snapshot:()=>({ready:false,mode:'error',error:String(error)})});}
+})();
+
+
+
+
+
+
+</script>
+</body></html>
