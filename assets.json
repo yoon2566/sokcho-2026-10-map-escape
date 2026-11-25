@@ -1,0 +1,12 @@
+{
+  "player": "assets/player.glb",
+  "enemy": "assets/enemy.glb",
+  "room": "assets/room.glb",
+  "ordinary_door": "assets/ordinary_door.glb",
+  "floor_exit": "assets/floor_exit.glb",
+  "coin": "assets/coin.glb",
+  "health_pickup": "assets/health_pickup.glb",
+  "upgrade_book": "assets/upgrade_book.glb",
+  "player_projectile": "assets/player_projectile.glb",
+  "enemy_projectile": "assets/enemy_projectile.glb"
+}

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "addedOn": "2026-11-02",
+  "studentNumber": 10,
+  "sourceStudentNumber": 10,
+  "status": "assets_only_not_integrated",
+  "warning": "게임 조작, 외형 변형, 충돌 및 재시작은 실제 게임에 연결한 후 확인해야 합니다.",
+  "models": [
+    {
+      "file": "hero_game.glb",
+      "bytes": 3021820,
+      "sha256": "01b656c8e9a66ed308d2291e240ed260c7ecce0613dd1855a3934242d35b27e4",
+      "skins": 1,
+      "joints": 17,
+      "animations": [
+        "Idle",
+        "Move",
+        "Attack",
+        "Pickup",
+        "Hit",
+        "Failure",
+        "FloorTransition",
+        "StrafeAttack"
+      ],
+      "meshOrigin": "Hunyuan-derived; some first-person equipment may include previous supporting geometry",
+      "rigAndMotionOrigin": "Hunyuan and/or Blender supplemental rig; includes Blender-authored animation",
+      "runtimeIntegrated": false
+    }
+  ]
+}
