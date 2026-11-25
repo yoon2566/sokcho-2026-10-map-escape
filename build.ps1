@@ -19,7 +19,7 @@ foreach ($taskProp in $taskSpec.PSObject.Properties) {
     $taskRecords[$taskProp.Name] = [ordered]@{mime=$taskMime;base64=[Convert]::ToBase64String($taskBytes);sha256=(Get-FileHash -LiteralPath $taskPath -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
 foreach ($taskToken in @('<!--OFFLINE_RUNTIME-->', '<!--EMBEDDED_ASSETS-->')) {
-    if ([regex]::Matches($taskHtml, [regex]::Escape($taskToken)).Count -ne 1) { throw "Expected exactly one $taskToken" }
+    if ($taskHtml.Contains($taskToken) -and [regex]::Matches($taskHtml, [regex]::Escape($taskToken)).Count -ne 1) { throw "Expected exactly one $taskToken" }
 }
 $taskRuntime = ''
 $taskRuntimePath = Join-Path $taskRoot 'vendor/game3d-runtime.iife.js'

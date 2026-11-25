@@ -1,0 +1,1494 @@
+(function (global) {
+  'use strict';
+  const DIRS = Object.freeze([
+    { key: 'N', dx: 0, dy: -1, opposite: 'S' },
+    { key: 'E', dx: 1, dy: 0, opposite: 'W' },
+    { key: 'S', dx: 0, dy: 1, opposite: 'N' },
+    { key: 'W', dx: -1, dy: 0, opposite: 'E' }
+  ]);
+
+  function seedNumber(seed) {
+    if (typeof seed === 'number' && Number.isFinite(seed)) return Math.trunc(seed) >>> 0;
+    const text = seed === undefined ? '0' : String(seed);
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function rng(seed) {
+    let state = seedNumber(seed);
+    return function next() {
+      state = (state + 0x6D2B79F5) | 0;
+      let value = Math.imul(state ^ (state >>> 15), 1 | state);
+      value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function shuffled(values, random) {
+    const result = values.slice();
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  const FLOOR_ROOM_PLANS = Object.freeze([
+    { min: 9, max: 11 },
+    { min: 11, max: 13 },
+    { min: 13, max: 16 }
+  ]);
+
+  const cellKey = (x, y) => x + ',' + y;
+
+  function generate(seed, floor) {
+    const normalizedSeed = seedNumber(seed);
+    const n = Number(floor);
+    const currentFloor = Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+    const random = rng(normalizedSeed + '|floor|' + currentFloor);
+    const plan = FLOOR_ROOM_PLANS[Math.min(FLOOR_ROOM_PLANS.length, currentFloor) - 1];
+    const roomTarget = plan.min + Math.floor(random() * (plan.max - plan.min + 1));
+
+    const cells = [{ x: 0, y: 0, parent: -1 }];
+    const occupied = new Map([[cellKey(0, 0), 0]]);
+
+    const neighborsOf = (index) => {
+      const found = [];
+      for (const dir of DIRS) {
+        const id = occupied.get(cellKey(cells[index].x + dir.dx, cells[index].y + dir.dy));
+        if (id !== undefined) found.push(id);
+      }
+      return found;
+    };
+
+    const canPlace = (x, y, parent) => {
+      if (occupied.has(cellKey(x, y))) return false;
+      for (const dir of DIRS) {
+        const id = occupied.get(cellKey(x + dir.dx, y + dir.dy));
+        if (id !== undefined && id !== parent) return false;
+      }
+      return true;
+    };
+
+    while (cells.length < roomTarget) {
+      const deadEnds = [], branches = [];
+      for (let i = 0; i < cells.length; i++) {
+        const open = DIRS.filter(dir => canPlace(cells[i].x + dir.dx, cells[i].y + dir.dy, i));
+        if (!open.length) continue;
+        (neighborsOf(i).length === 1 ? deadEnds : branches).push({ index: i, open });
+      }
+      const pool = deadEnds.length && (random() < 0.72 || !branches.length) ? deadEnds : branches;
+      if (!pool.length) break;
+      const parent = pool[Math.floor(random() * pool.length)];
+      const dir = parent.open[Math.floor(random() * parent.open.length)];
+      const cell = { x: cells[parent.index].x + dir.dx, y: cells[parent.index].y + dir.dy, parent: parent.index };
+      occupied.set(cellKey(cell.x, cell.y), cells.length);
+      cells.push(cell);
+    }
+
+    let secretId = -1;
+    const pocketKeys = new Set();
+    const pockets = [];
+    for (const cell of cells) {
+      for (const dir of DIRS) {
+        const x = cell.x + dir.dx, y = cell.y + dir.dy, key = cellKey(x, y);
+        if (occupied.has(key) || pocketKeys.has(key)) continue;
+        let touching = 0;
+        for (const probe of DIRS) if (occupied.has(cellKey(x + probe.dx, y + probe.dy))) touching++;
+        if (touching >= 3) { pocketKeys.add(key); pockets.push({ x, y }); }
+      }
+    }
+    if (pockets.length) {
+      const pocket = pockets[Math.floor(random() * pockets.length)];
+      const doorDirs = shuffled(DIRS, random).filter(dir => occupied.has(cellKey(pocket.x + dir.dx, pocket.y + dir.dy)));
+      if (doorDirs.length) {
+        const door = doorDirs[0];
+        secretId = cells.length;
+        occupied.set(cellKey(pocket.x, pocket.y), secretId);
+        cells.push({ x: pocket.x, y: pocket.y, parent: occupied.get(cellKey(pocket.x + door.dx, pocket.y + door.dy)) });
+      }
+    }
+
+    const tree = cells.map(() => []);
+    for (let id = 1; id < cells.length; id++) {
+      tree[id].push(cells[id].parent);
+      tree[cells[id].parent].push(id);
+    }
+    const distances = new Array(cells.length).fill(-1);
+    const previous = new Array(cells.length).fill(-1);
+    distances[0] = 0;
+    const queue = [0];
+    for (let head = 0; head < queue.length; head++) {
+      const roomId = queue[head];
+      for (const id of tree[roomId]) {
+        if (distances[id] !== -1) continue;
+        distances[id] = distances[roomId] + 1;
+        previous[id] = roomId;
+        queue.push(id);
+      }
+    }
+
+    const deadEnds = [];
+    for (let id = 1; id < cells.length; id++) {
+      if (id !== secretId && tree[id].length === 1) deadEnds.push(id);
+    }
+    const assigned = new Set([0]);
+    if (secretId >= 0) assigned.add(secretId);
+    const takeFarthest = () => {
+      let best = -1;
+      for (const id of deadEnds) {
+        if (assigned.has(id)) continue;
+        if (best < 0 || distances[id] > distances[best]) best = id;
+      }
+      if (best >= 0) assigned.add(best);
+      return best;
+    };
+    const takeRandom = () => {
+      const open = deadEnds.filter(id => !assigned.has(id));
+      if (!open.length) return -1;
+      const id = open[Math.floor(random() * open.length)];
+      assigned.add(id);
+      return id;
+    };
+    const takeFallback = () => {
+      const open = [];
+      for (let id = 1; id < cells.length; id++) if (!assigned.has(id)) open.push(id);
+      if (!open.length) return -1;
+      const id = open[Math.floor(random() * open.length)];
+      assigned.add(id);
+      return id;
+    };
+
+    let exitId = takeFarthest();
+    if (exitId < 0) exitId = takeFallback();
+    let treasuryId = takeRandom();
+    if (treasuryId < 0) treasuryId = takeFallback();
+    let sanctuaryId = takeRandom();
+    if (sanctuaryId < 0) sanctuaryId = takeFallback();
+    let riskId = -1;
+    if (random() < 0.55) {
+      riskId = takeRandom();
+      if (riskId < 0) riskId = takeFallback();
+    }
+
+    let trapId = -1;
+    if (random() < 0.4) {
+      trapId = takeRandom();
+      if (trapId < 0) trapId = takeFallback();
+    }
+
+    const pickUpgrade = () => ['damage', 'fireRate', 'maxHealth', 'swift'][Math.floor(random() * 4)];
+    const types = cells.map(() => 'combat');
+    types[0] = 'start';
+    types[exitId] = 'exit';
+    if (treasuryId >= 0) types[treasuryId] = 'treasury';
+    if (sanctuaryId >= 0) types[sanctuaryId] = 'sanctuary';
+    if (riskId >= 0) types[riskId] = 'risk';
+    if (trapId >= 0) types[trapId] = 'trap';
+    if (secretId >= 0) types[secretId] = 'secret';
+
+    const rooms = cells.map((cell, id) => {
+      let reward = null;
+      if (types[id] === 'combat') reward = { kind: 'coins', amount: 1 + Math.floor(random() * 2) };
+      else if (types[id] === 'treasury') reward = { kind: 'upgrade', upgrade: pickUpgrade(), amount: 1 };
+      else if (types[id] === 'risk') reward = { kind: 'upgrade', upgrade: pickUpgrade(), amount: 1 };
+      else if (types[id] === 'sanctuary') reward = { kind: 'heal', amount: 2, cost: 3 };
+      return {
+        id, x: cell.x, y: cell.y, type: types[id], neighbors: {},
+        reward, rewards: reward ? [reward] : [],
+        visited: false, cleared: false,
+        empty: types[id] === 'combat' && random() < 0.22
+      };
+    });
+    for (let id = 1; id < cells.length; id++) {
+      const parent = cells[id].parent;
+      const dir = DIRS.find(d => cells[parent].x + d.dx === cells[id].x && cells[parent].y + d.dy === cells[id].y);
+      rooms[parent].neighbors[dir.key] = id;
+      rooms[id].neighbors[dir.opposite] = parent;
+    }
+
+    const mainPath = [];
+    for (let id = exitId; id >= 0; id = previous[id]) mainPath.unshift(id);
+    const optionalRoomIds = [treasuryId, sanctuaryId, riskId, trapId, secretId].filter(id => id >= 0);
+
+    return {
+      rooms, startId: 0, exitId, floor: currentFloor, seed: normalizedSeed,
+      mainPath, optionalRoomIds, schemaVersion: 2
+    };
+  }
+
+  global.DreamMap = Object.freeze({ generate, rng });
+})(typeof window !== 'undefined' ? window : globalThis);
+
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const hex = n => '#' + n.toString(16).padStart(6, '0');
+const rot = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+const RX = 6.32, RY = 4.82;
+const VEC = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
+const OPP = { N: 'S', S: 'N', E: 'W', W: 'E' };
+const DEFAULT_SEED = '1010';
+
+const labels = { start: '꿈의 첫 방', combat: '낯선 발소리', risk: '도전의 방 · 큰 보상', treasury: '보물방 · 강화', sanctuary: '상점 · 코인 회복', exit: '보스의 방 · 다음 층의 문', secret: '비밀의 방', trap: '가시 방 · 돌진하는 적' };
+const THEME = {
+  start: { accent: 0x5fa8b8, tile: 0x1a2330 },
+  combat: { accent: 0x6c7480, tile: 0x181c24 },
+  treasury: { accent: 0xd4b055, tile: 0x2a1f10 },
+  sanctuary: { accent: 0x5fbfa0, tile: 0x122218 },
+  risk: { accent: 0xc4483f, tile: 0x2a1214 },
+  exit: { accent: 0x8b3fd0, tile: 0x1d1028 },
+  secret: { accent: 0x8a6fd0, tile: 0x181226 },
+  trap: { accent: 0xe0c26b, tile: 0x27200d }
+};
+const BOSS_POOL = [
+  { name: '경계의 눈', patterns: ['radial', 'spread', 'charge'], minions: 0, tint: 0xd9b3ff, hp: 60, speed: 2.0 },
+  { name: '탐식하는 배', patterns: ['spread', 'summon', 'spiral', 'charge'], minions: 4, tint: 0xa8e0b0, hp: 75, speed: 1.8 },
+  { name: '몽마의 심장', patterns: ['radial', 'spiral', 'charge', 'summon'], minions: 5, tint: 0xff9a9a, hp: 90, speed: 2.1 },
+  { name: '땅굴 괴수', patterns: ['burrow', 'spread', 'burrow', 'radial'], minions: 0, tint: 0xc9a46a, hp: 70, speed: 2.2 },
+  { name: '분열하는 핵', patterns: ['spread', 'radial', 'charge'], minions: 0, tint: 0x8fd3ff, hp: 80, speed: 1.9, split: true },
+  { name: '쌍둥이 그림자', patterns: ['charge', 'spread', 'radial', 'charge'], minions: 0, tint: 0x9a9aff, hp: 95, speed: 2.2, twin: true }
+];
+
+const PW = 320, PH = 180;
+const cv = $('game'), out = cv.getContext('2d');
+const pix = document.createElement('canvas');
+pix.width = PW;
+pix.height = PH;
+const pixCtx = pix.getContext('2d');
+const ent = document.createElement('canvas');
+ent.width = PW;
+ent.height = PH;
+const entCtx = ent.getContext('2d');
+entCtx.imageSmoothingEnabled = false;
+let ctx = pixCtx;
+ctx.imageSmoothingEnabled = false;
+out.imageSmoothingEnabled = false;
+const mm = $('minimap'), mctx = mm.getContext('2d');
+let K = 1, DX = 0, DY = 0, S = 60, OX = 0, OY = 0;
+let seed = DEFAULT_SEED, floor = 1, mode = 'loading', map = null, current = null, rng = () => 0.5, bossOrder = null;
+let hero = { x: 0, y: 1.7, walk: 0, attackT: 0, hitT: 0, deadT: 0, moving: false };
+let enemies = [], shots = [], effects = [], decals = [], decor = [], doors = [], boss = null;
+let hp = 6, maxHp = 6, coins = 0, damage = 1, fireInterval = 0.34, fireTimer = 0, invuln = 0, moveSpeed = 3.45;
+let aim = { x: 0, y: -1 }, moveDir = { x: 0, y: 0 }, mouse = { down: false, known: false, x: 0, y: 0 };
+let keys = new Set(), upgrades = [], events = [], floorMaps = [];
+let playTime = 0, roomVisits = 0, clears = 0, kills = 0, elapsed = 0;
+let roomCooldown = 0, toastTime = 0, shake = 0, damageFlash = 0, transitionTime = 0, bossIntroTime = 0, waveDelay = 0, wave = 0, totalWaves = 0;
+let audio = null, muted = false, last = performance.now();
+
+function resize() {
+  cv.width = innerWidth;
+  cv.height = innerHeight;
+  K = Math.max(1, Math.floor(Math.min(innerWidth / PW, innerHeight / PH)));
+  DX = Math.floor((innerWidth - PW * K) / 2);
+  DY = Math.floor((innerHeight - PH * K) / 2);
+  S = Math.min(PW / 14.2, (PH - 30) / 10.4);
+  OX = PW / 2;
+  OY = PH / 2 + 6;
+}
+function toWorld(sx, sy) { return { x: ((sx - DX) / K - OX) / S, y: ((sy - DY) / K - OY) / S }; }
+function record(type, data = {}) {
+  events.push({ type, time: +playTime.toFixed(3), floor, room: current?.id, ...data });
+  if (events.length > 1000) events.shift();
+}
+function beep(freq = 440, len = 0.1, kind = 'sine', gain = 0.025) {
+  if (muted || !audio) return;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = kind;
+  o.frequency.setValueAtTime(freq, audio.currentTime);
+  o.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 0.6), audio.currentTime + len);
+  g.gain.setValueAtTime(gain, audio.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + len);
+  o.connect(g); g.connect(audio.destination);
+  o.start(); o.stop(audio.currentTime + len);
+}
+function say(text, duration = 3) {
+  $('toast').textContent = text;
+  $('toast').classList.add('show');
+  toastTime = duration;
+}
+function ring(x, y, color = 0x73dcf0, size = 0.45, life = 0.7) {
+  effects.push({ x, y, color, size, t: life, total: life });
+}
+function bloodDecal(x, y, s = 1) {
+  decals.push({ x: x + (Math.random() - 0.5) * 0.5 * s, y: y + (Math.random() - 0.5) * 0.4 * s, s: s * (0.6 + Math.random() * 0.6) });
+}
+function updateHUD() {
+  let h = '';
+  for (let i = 0; i < maxHp; i += 2) h += hp - i >= 2 ? '<span class="hh-full">♥</span>' : hp - i === 1 ? '<span class="hh-half">♥</span>' : '<span class="hh-empty">♥</span>';
+  $('hearts').innerHTML = h;
+  $('coins').textContent = '◆ ' + coins;
+  $('stats').textContent = `공격 ${damage} · 초당 ${(1 / fireInterval).toFixed(1)}발 · 체력 ${hp / 2}/${maxHp / 2}`;
+  $('floorlabel').textContent = `${floor} / 3 층`;
+  $('roomlabel').textContent = current ? (current.empty ? '조용한 방' : labels[current.type]) + (roomLocked() ? ' · 전투 중' : '') : '';
+  $('inventory').textContent = upgrades.length ? upgrades.map(x => x.title).join('  /  ') : '아직 획득한 강화가 없습니다';
+}
+function roomLocked() {
+  return !!current && !current.cleared && (current.type === 'combat' || current.type === 'risk' || current.type === 'trap' || current.type === 'exit');
+}
+
+function bossFor(f) {
+  if (!bossOrder) {
+    const r = DreamMap.rng(seed + ':bossorder');
+    bossOrder = BOSS_POOL.slice();
+    for (let i = bossOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(r() * (i + 1));
+      [bossOrder[i], bossOrder[j]] = [bossOrder[j], bossOrder[i]];
+    }
+  }
+  return bossOrder[(f - 1) % bossOrder.length];
+}
+
+function makeEnemy(x, y, isBoss, style) {
+  const a = {
+    x, y, boss: !!isBoss, style: style || 'shooter', dead: false, age: 0, hit: 0, tell: 0,
+    fire: 1 + rng(), speed: isBoss ? 0.5 : 0.65 + rng() * 0.28, strafeDir: rng() < 0.5 ? 1 : -1, strafeT: 1 + rng(),
+    volley: 'aim', r: isBoss ? 1 : 0.36, contact: 0.56, barW: isBoss ? 3.2 : 1, barH: isBoss ? 2.6 : 1.05, scale: isBoss ? 1.8 : 0.8
+  };
+  a.hp = isBoss ? 18 + floor * 8 : (floor === 1 ? 4 : 5);
+  a.maxHp = a.hp;
+  enemies.push(a);
+  return a;
+}
+function makeBossBody(cfg, x, y, opts) {
+  const a = makeEnemy(x, y, true, 'boss');
+  a.scale = opts.scale;
+  a.r = opts.scale * 0.5;
+  a.cfg = cfg;
+  a.name = cfg.name;
+  a.patterns = cfg.patterns.slice();
+  a.pi = opts.pi || 0;
+  a.cool = 1.4;
+  a.pending = null;
+  a.action = null;
+  a.actionTime = 0;
+  a.spiralTick = 0;
+  a.spiralAngle = 0;
+  a.minionCap = cfg.minions;
+  a.phaseFloor = floor;
+  a.hp = a.maxHp = opts.hp;
+  a.moveSpeed = cfg.speed;
+  a.contact = opts.contact || 0.85;
+  a.splitLeft = opts.split || 0;
+  a.burrowed = false;
+  a.pair = null;
+  return a;
+}
+function spawnBoss() {
+  const cfg = bossFor(floor);
+  if (cfg.twin) {
+    const a = makeBossBody(cfg, -2.2, -0.4, { hp: cfg.hp, scale: 1.5, contact: 0.75 });
+    const b = makeBossBody(cfg, 2.2, -0.4, { hp: cfg.hp, scale: 1.5, contact: 0.75, pi: 2 });
+    a.pair = b; b.pair = a;
+    boss = a;
+  } else {
+    boss = makeBossBody(cfg, 0, -0.4, { hp: cfg.hp, scale: 1.8, split: cfg.split ? 1 : 0 });
+  }
+  $('bossname').textContent = cfg.name;
+  $('bosshpf').style.width = '100%';
+  $('bossbar').classList.remove('hidden');
+  beep(140, 0.5, 'sawtooth', 0.05);
+  record('bossSpawn', { name: cfg.name, hp: cfg.hp });
+}
+function startBossIntro() {
+  const cfg = bossFor(floor);
+  mode = 'bossIntro';
+  bossIntroTime = 1.9;
+  $('bossintroname').textContent = cfg.name;
+  $('bossintro').classList.remove('hidden');
+  record('bossIntro', { name: cfg.name });
+}
+
+function shoot(x, y, dx, dy, friendly) {
+  shots.push({ x, y, dx, dy, speed: friendly ? 10.6 : 4.1 + (floor - 1) * 0.45, life: friendly ? 1.45 : 5.5, friendly, damage: friendly ? damage : 1 });
+}
+function dirTo(e) {
+  const dx = hero.x - e.x, dy = hero.y - e.y, d = Math.hypot(dx, dy) || 1;
+  return { x: dx / d, y: dy / d, dist: d };
+}
+
+function updateEnemy(e, dt) {
+  const d = dirTo(e);
+  e.fire -= dt;
+  if (e.tell > 0) {
+    e.tell -= dt;
+    if (e.tell <= 0) {
+      if (e.volley === 'radial') {
+        for (let k = 0; k < 8; k++) {
+          const a = k * TAU / 8 + elapsed * 0.12;
+          shoot(e.x, e.y, Math.cos(a), Math.sin(a), false);
+        }
+      } else {
+        const offs = floor === 2 ? [-0.13, 0, 0.13] : [0];
+        for (const o of offs) {
+          const [vx, vy] = rot(d.x, d.y, o);
+          shoot(e.x + d.x * 0.35, e.y + d.y * 0.35, vx, vy, false);
+        }
+      }
+      e.fire = 1.3 + rng() * 0.9;
+    }
+  } else if (e.fire < 0.55) {
+    e.tell = 0.55;
+  } else {
+    let vx = 0, vy = 0;
+    if (e.style === 'chase') { vx = d.x; vy = d.y; }
+    else if (e.style === 'dash') { const m = Math.sin(e.age * 2.4) > 0.5 ? 1.6 : 0.25; vx = d.x * m; vy = d.y * m; }
+    else {
+      e.strafeT -= dt;
+      if (e.strafeT <= 0) { e.strafeDir *= -1; e.strafeT = 1 + rng() * 1.2; }
+      if (d.dist > 3.5) { vx = d.x; vy = d.y; }
+      else if (d.dist < 2) { vx = -d.x * 0.7; vy = -d.y * 0.7; }
+      else { vx = -d.y * e.strafeDir * 0.9 + d.x * 0.2; vy = d.x * e.strafeDir * 0.9 + d.y * 0.2; }
+    }
+    if (e.hit > 0) { vx = 0; vy = 0; }
+    const sp = e.speed * 2.2 * dt;
+    e.x = clamp(e.x + vx * sp, -5.1, 5.1);
+    e.y = clamp(e.y + vy * sp, -3.55, 3.55);
+  }
+  if (d.dist < e.contact) hurt('적에게 부딪혔습니다');
+}
+
+function updateBoss(e, dt) {
+  const d = dirTo(e);
+  const move = (vx, vy) => {
+    e.x = clamp(e.x + vx * dt, -5.1, 5.1);
+    e.y = clamp(e.y + vy * dt, -3.55, 3.55);
+  };
+  if (e.tell > 0) {
+    e.tell -= dt;
+    if (e.tell <= 0) startBossAction(e, d.x, d.y);
+  } else if (e.action === 'burrow') {
+    e.actionTime -= dt;
+    move(d.x * 3.2, d.y * 3.2);
+    if (e.actionTime <= 0) emergeBoss(e);
+  } else if (e.action === 'spiral') {
+    e.actionTime -= dt;
+    e.spiralAngle += dt * 3.4;
+    e.spiralTick -= dt;
+    if (e.spiralTick <= 0) {
+      e.spiralTick = 0.13;
+      const off = Math.floor(elapsed * 2.7) % 2;
+      const a = e.spiralAngle + off * Math.PI;
+      shoot(e.x, e.y, Math.cos(a), Math.sin(a), false);
+    }
+    if (e.actionTime <= 0) { e.action = null; e.cool = 1.1; }
+  } else if (e.action === 'charge') {
+    e.actionTime -= dt;
+    move(e.dashX * 9, e.dashY * 9);
+    if (e.actionTime <= 0) { e.action = null; e.cool = 1.3; }
+  } else {
+    e.cool -= dt;
+    const s = e.moveSpeed;
+    e.strafeT -= dt;
+    if (e.strafeT <= 0) { e.strafeDir *= -1; e.strafeT = 1.6 + rng() * 1.2; }
+    if (d.dist > 3.2) move(d.x * s, d.y * s);
+    else if (d.dist < 2) move(-d.x * s * 0.6, -d.y * s * 0.6);
+    else move(-d.y * e.strafeDir * s * 0.9 + d.x * s * 0.25, d.x * e.strafeDir * s * 0.9 + d.y * s * 0.25);
+    if (e.cool <= 0) {
+      const pat = e.patterns[e.pi % e.patterns.length];
+      e.pi++;
+      e.pending = pat;
+      e.tell = pat === 'charge' ? 0.55 : pat === 'burrow' ? 0.9 : 0.72;
+    }
+  }
+  if (!e.burrowed && d.dist < e.contact) hurt('보스와 부딪혔습니다');
+}
+
+function startBossAction(e, dx, dy) {
+  const pat = e.pending;
+  e.pending = null;
+  if (pat === 'burrow') {
+    e.action = 'burrow'; e.actionTime = 1.9; e.burrowed = true; shake = 0.12;
+  } else if (pat === 'radial') {
+    const n = 12 + Math.min(6, (e.phaseFloor - 1) * 3);
+    for (let k = 0; k < n; k++) {
+      const a = k * TAU / n + elapsed * 0.2;
+      shoot(e.x, e.y, Math.cos(a), Math.sin(a), false);
+    }
+    e.cool = 1.4;
+  } else if (pat === 'spread') {
+    const offs = e.phaseFloor >= 2 ? [-0.28, -0.14, 0, 0.14, 0.28] : [-0.12, 0, 0.12];
+    for (const o of offs) {
+      const [vx, vy] = rot(dx, dy, o);
+      shoot(e.x + dx * 0.4, e.y + dy * 0.4, vx, vy, false);
+    }
+    e.cool = 1.2;
+  } else if (pat === 'spiral') {
+    e.action = 'spiral'; e.actionTime = 2.6; e.spiralTick = 0; e.spiralAngle = Math.atan2(dy, dx);
+  } else if (pat === 'charge') {
+    e.action = 'charge'; e.actionTime = 0.55; e.dashX = dx; e.dashY = dy;
+  } else if (pat === 'summon') {
+    const alive = enemies.filter(x => !x.boss && !x.dead).length;
+    if (alive < e.minionCap) {
+      for (let k = 0; k < 2; k++) {
+        const an = rng() * TAU;
+        const mx = clamp(e.x + Math.sin(an) * 1.7, -5, 5), my = clamp(e.y + Math.cos(an) * 1.5, -3.4, 3.4);
+        makeEnemy(mx, my, false, 'chase');
+        ring(mx, my, 0xb36ff0, 0.7, 0.6);
+      }
+    }
+    e.cool = 1.6;
+  }
+}
+
+function emergeBoss(e) {
+  e.action = null;
+  e.burrowed = false;
+  e.cool = 1.2;
+  for (let k = 0; k < 10; k++) {
+    const a = k * TAU / 10;
+    shoot(e.x, e.y, Math.cos(a), Math.sin(a), false);
+  }
+  ring(e.x, e.y, 0x9a6a3a, 2.4, 0.9);
+  shake = 0.35;
+  beep(90, 0.4, 'sawtooth', 0.05);
+}
+
+function damageEnemy(e, n) {
+  if (e.dead || e.burrowed) return;
+  record('enemyDamage', { before: e.hp, after: e.hp - n, damage: n, enemyMaxHp: e.maxHp });
+  e.hp -= n;
+  if (e.pair && !e.pair.dead) e.pair.hp = e.hp;
+  e.hit = 0.28;
+  ring(e.x, e.y, 0x86e9f7, 0.42, 0.2);
+  if (e.hp <= 0) killEnemy(e, false);
+}
+function killEnemy(e, silent) {
+  e.dead = true;
+  e.age = 0;
+  bloodDecal(e.x, e.y, e.boss ? 2 : 0.9);
+  if (e.boss) for (const m of enemies) if (!m.boss && !m.dead) { m.dead = true; m.age = 0; }
+  if (!silent) { kills++; beep(210, 0.08); record('kill', { kills }); }
+  if (e.pair && !e.pair.dead) { e.pair.hp = 0; killEnemy(e.pair, true); }
+  if (e.splitLeft > 0) spawnSplits(e);
+}
+function spawnSplits(e) {
+  const kids = [];
+  for (const k of [-1, 1]) {
+    const x = clamp(e.x + k * 1.3, -5, 5), y = clamp(e.y, -3.4, 3.4);
+    kids.push(makeBossBody(e.cfg, x, y, { hp: Math.ceil(e.maxHp * 0.3), scale: 1.05, split: 0, contact: 0.6 }));
+    kids[kids.length - 1].name = e.cfg.name + ' 조각';
+    ring(x, y, e.cfg.tint, 1, 0.8);
+  }
+  boss = kids[0];
+  $('bossname').textContent = e.cfg.name + ' · 조각';
+  $('bossbar').classList.remove('hidden');
+}
+
+function hurt(reason) {
+  if (invuln > 0 || mode !== 'play') return;
+  hp--;
+  invuln = 1.25;
+  damageFlash = 0.26;
+  shake = 0.2;
+  hero.hitT = 0.3;
+  beep(120, 0.22, 'triangle', 0.06);
+  record('hit', { hp, reason });
+  ring(hero.x, hero.y, 0xec786f, 0.75, 0.45);
+  if (hp <= 0) {
+    hp = 0;
+    mode = 'dying';
+    hero.deadT = 0;
+    transitionTime = 1.25;
+    shots = [];
+  }
+  updateHUD();
+}
+
+function fireHero() {
+  shoot(hero.x + aim.x * 0.3, hero.y - 0.2 + aim.y * 0.3, aim.x, aim.y, true);
+  beep(450 + Math.random() * 60, 0.045, 'sine', 0.014);
+  if (moveDir.x === 0 && moveDir.y === 0) hero.attackT = 0.3;
+  record('shot', { damage });
+}
+
+function updateInput(dt) {
+  const mx = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
+  const my = (keys.has('KeyS') ? 1 : 0) - (keys.has('KeyW') ? 1 : 0);
+  const ax = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
+  const ay = (keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0);
+  const len = Math.hypot(mx, my);
+  moveDir.x = len ? mx / len : 0;
+  moveDir.y = len ? my / len : 0;
+  hero.moving = len > 0;
+  hero.x = clamp(hero.x + moveDir.x * moveSpeed * dt, -5.64, 5.64);
+  hero.y = clamp(hero.y + moveDir.y * moveSpeed * dt, -4.11, 4.11);
+  const firing = ax || ay || mouse.down;
+  hero.firing = !!firing;
+  if (ax || ay) {
+    const l = Math.hypot(ax, ay);
+    aim.x = ax / l; aim.y = ay / l;
+  } else if (mouse.down && mouse.known) {
+    const w = toWorld(mouse.x, mouse.y);
+    const dx = w.x - hero.x, dy = w.y - hero.y, l = Math.hypot(dx, dy) || 1;
+    aim.x = dx / l; aim.y = dy / l;
+  }
+  if (firing && fireTimer <= 0) { fireHero(); fireTimer = fireInterval; }
+}
+
+function updateShots(dt) {
+  for (let i = shots.length - 1; i >= 0; i--) {
+    const s = shots[i];
+    s.life -= dt;
+    s.x += s.dx * s.speed * dt;
+    s.y += s.dy * s.speed * dt;
+    let hit = false;
+    if (s.friendly) {
+      for (const e of enemies) {
+        if (!e.dead && !e.burrowed && Math.hypot(s.x - e.x, s.y - e.y) < (e.boss ? e.r + 0.12 : 0.46)) {
+          damageEnemy(e, s.damage);
+          hit = true;
+          break;
+        }
+      }
+    } else if (Math.hypot(s.x - hero.x, s.y - hero.y) < 0.34) {
+      hurt('적의 탄에 맞았습니다');
+      hit = true;
+    }
+    if (hit || s.life < 0 || Math.abs(s.x) > 6 || Math.abs(s.y) > 4.7) shots.splice(i, 1);
+    if (mode !== 'play') return;
+  }
+}
+
+function updateEnemies(dt) {
+  for (const e of enemies) {
+    e.age += dt;
+    if (e.dead) continue;
+    e.hit = Math.max(0, e.hit - dt);
+    if (e.boss) updateBoss(e, dt);
+    else updateEnemy(e, dt);
+    if (mode !== 'play') return;
+  }
+  if (roomLocked() && enemies.every(e => e.dead)) {
+    if (wave < totalWaves) {
+      waveDelay += dt;
+      if (waveDelay > 0.95) {
+        waveDelay = 0;
+        spawnWave();
+        say('다음 무리 · 경고 원을 보고 피하세요', 1.8);
+      }
+    } else rewardRoom();
+  }
+}
+
+function spawnWave() {
+  wave++;
+  const count = current.type === 'risk' ? 8 : current.type === 'trap' ? 5 : floor === 1 ? 6 : 7;
+  for (let i = 0; i < count; i++) {
+    let x = 0, y = 0;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      x = (rng() - 0.5) * 8;
+      y = (rng() - 0.5) * 5.6;
+      if (Math.hypot(x - hero.x, y - hero.y) > 2.5) break;
+    }
+    makeEnemy(x, y, false, current.type === 'trap' || i % 4 === 3 ? 'dash' : i % 3 === 0 ? 'chase' : 'shooter');
+    ring(x, y, 0xeaa18b, 0.65, 0.7);
+  }
+  record('wave', { wave, count });
+  updateHUD();
+}
+
+function createPickup(kind, x, y, extra = {}) {
+  return { kind, x, y, ...extra, collected: false, phase: rng() * TAU };
+}
+function collect(p) {
+  p.collected = true;
+  if (p.kind === 'coins') {
+    coins += p.amount || 1;
+    beep(1050, 0.07);
+    record('coin', { coins });
+  } else if (p.kind === 'heal') {
+    hp = Math.min(maxHp, hp + (p.amount || 1) * 2);
+    hero.attackT = 0.3;
+    beep(650, 0.22);
+    say('체력이 회복되었습니다');
+    record('heal', { hp });
+  } else {
+    grantUpgrade(p.upgrade || 'damage');
+  }
+  updateHUD();
+}
+function grantUpgrade(kind) {
+  let title, detail;
+  if (kind === 'fireRate') {
+    fireInterval = Math.max(0.16, fireInterval * 0.72);
+    title = '빠른 울림'; detail = `발사 속도 → 초당 ${(1 / fireInterval).toFixed(1)}발`;
+  } else if (kind === 'maxHealth') {
+    maxHp += 2; hp = Math.min(maxHp, hp + 2);
+    title = '단단한 꿈'; detail = `최대 체력 → ${maxHp / 2}, 체력 +1`;
+  } else if (kind === 'swift') {
+    moveSpeed *= 1.18;
+    title = '가벼운 발걸음'; detail = `이동 속도 → ${moveSpeed.toFixed(2)}`;
+  } else {
+    damage++;
+    title = '공명 탄'; detail = `공격력 ${damage - 1} → ${damage}`;
+  }
+  upgrades.push({ kind, title });
+  heroSpecialPose();
+  record('upgrade', { kind, damage, fireInterval, maxHp });
+  ring(hero.x, hero.y, 0xe9cb83, 1, 1.1);
+  say(`${title} 획득 · ${detail}`, 4);
+  beep(880, 0.3, 'sine', 0.055);
+  updateHUD();
+}
+function heroSpecialPose() { hero.attackT = 0.3; }
+
+function rewardRoom() {
+  if (current.cleared) return;
+  current.cleared = true;
+  clears++;
+  current.pickups = current.pickups || [];
+  for (let i = 0; i < (current.type === 'risk' ? 5 : 3); i++) current.pickups.push(createPickup('coins', (i - 1) * 0.42, 0.45, { amount: 1 }));
+  if (current.type === 'risk') current.pickups.push(createPickup('upgrade', 0, -0.9, { upgrade: current.reward?.upgrade || 'damage' }));
+  else if (current.type === 'trap' || (current.type !== 'exit' && rng() < 0.65)) current.pickups.push(createPickup('heal', 0.9, -0.6, { amount: 1 }));
+  beep(570, 0.2);
+  ring(0, 0, 0xe9cb83, 2, 1);
+  record('roomClear', { clears });
+  updateHUD();
+}
+
+function doInteract() {
+  if (mode !== 'play' || !current) return;
+  if (current.type === 'exit' && current.cleared && Math.hypot(hero.x, hero.y + 1.4) < 1.75) {
+    mode = 'floorTransition';
+    transitionTime = 1.35;
+    record('floorTransitionStart', { from: floor, to: floor + 1 });
+    shots = [];
+    $('transition').innerHTML = `다음 꿈으로<small>${floor}층 → ${floor + 1}층</small>`;
+    $('transition').style.opacity = 1;
+    beep(750, 0.6, 'sine', 0.05);
+  } else if (current.type === 'sanctuary' && Math.hypot(hero.x, hero.y + 0.5) < 1.8) {
+    if (hp >= maxHp) say('체력이 가득합니다 · 코인을 아껴 두세요');
+    else if (coins < 3) say('회복에는 코인 3개가 필요합니다');
+    else {
+      coins -= 3;
+      hp = Math.min(maxHp, hp + 4);
+      hero.attackT = 0.3;
+      record('purchaseHeal', { hp, coins });
+      say('코인 3개 사용 · 체력 +2');
+      beep(720, 0.3);
+      updateHUD();
+    }
+  }
+}
+
+function clearRoomObjects() {
+  enemies = []; shots = []; effects = []; decals = []; decor = []; doors = []; boss = null;
+  $('bossbar').classList.add('hidden');
+}
+function makeDecor(room) {
+  const r = DreamMap.rng(seed + ':decor:' + floor + ':' + room.id);
+  const items = [];
+  const add = (k, x, y, extra = {}) => items.push({ k, x, y, ...extra });
+  const T = room.type;
+  if (T === 'combat' || T === 'risk') {
+    for (let i = 0; i < 5; i++) if (r() < 0.7) add('rock', (r() - 0.5) * 9, (r() - 0.5) * 7, { s: 0.6 + r() * 0.5 });
+    add('web', -5.6, -3.8, { a: Math.PI / 4 });
+    add('web', 5.6, 3.8, { a: -3 * Math.PI / 4 });
+  }
+  if (T === 'trap') {
+    for (let k = -2; k <= 2; k++) add('spike', k * 1.5, -2.6 + (k % 2) * 1.4);
+    add('web', -5.6, -3.8, { a: Math.PI / 4 });
+  }
+  if (T === 'treasury') { add('pedestal', 0, -0.5); add('candle', -4.4, -3.1); add('candle', 4.4, 3.3); }
+  if (T === 'sanctuary') { add('counter', 0, -3.4); add('candle', -1.3, -3.4); add('candle', 1.3, -3.4); add('pillar', -4.9, -2.7); add('pillar', 4.9, -2.7); }
+  if (T === 'exit') { add('pillar', -4.9, -3.2); add('pillar', 4.9, -3.2); add('pillar', -4.9, 3.4); add('pillar', 4.9, 3.4); add('candle', -4.9, -3.2); add('candle', 4.9, -3.2); add('spike', -2.6, -3.4); add('spike', 2.6, 3.5); }
+  if (T === 'secret' || T === 'start') { add('candle', -4.4, -3.1); add('candle', 4.4, 3.3); }
+  return items;
+}
+
+function enterRoom(id, from = null) {
+  clearRoomObjects();
+  current = map.rooms[id];
+  current.visited = true;
+  roomVisits++;
+  roomCooldown = 0.7;
+  hero.x = 0; hero.y = 1.7;
+  if (from) { const v = VEC[from]; hero.x = v[0] * 4.88; hero.y = v[1] * 3.38; }
+  hero.attackT = 0; hero.hitT = 0;
+  wave = 0; waveDelay = 0; totalWaves = current.type === 'exit' ? 0 : 1;
+  for (const [d, n] of Object.entries(current.neighbors)) doors.push({ dir: d, id: n });
+  if (!current.initialized) {
+    current.initialized = true;
+    current.pickups = [];
+    if (['start', 'treasury', 'sanctuary', 'secret'].includes(current.type) || current.empty) current.cleared = true;
+    if (current.type === 'treasury') current.pickups = [createPickup('upgrade', 0, -0.5, { upgrade: current.reward?.upgrade || 'damage' })];
+    if (current.type === 'secret') current.pickups = [createPickup('coins', -0.9, 0.4, { amount: 2 }), createPickup('coins', -0.3, -0.2, { amount: 2 }), createPickup('coins', 0.3, 0.4, { amount: 2 }), createPickup('heal', 0.9, -0.2, { amount: 1 })];
+    if (current.empty) current.pickups = [createPickup('coins', -0.45, 0.35, { amount: 1 }), createPickup('coins', 0.45, -0.25, { amount: 1 })];
+  }
+  if (current.type === 'exit' || current.type === 'combat' || current.type === 'risk') {
+    decals.push({ x: 0, y: 1.2, s: 2 }, { x: -3.2, y: -1.8, s: 1.6 });
+  }
+  decor = makeDecor(current);
+  if (current.type === 'exit' && !current.cleared) startBossIntro();
+  else if (roomLocked()) spawnWave();
+  record('roomEnter', { id, roomType: current.type, from });
+  updateHUD();
+}
+function newFloor() {
+  map = DreamMap.generate(seed, floor);
+  rng = DreamMap.rng(seed + ':combat:' + floor);
+  floorMaps.push({ floor, exitId: map.exitId });
+  enterRoom(map.startId);
+  record('floorCreated', { floor });
+}
+function start(newSeed) {
+  seed = String(newSeed || DEFAULT_SEED).slice(0, 16);
+  mode = 'play';
+  floor = 1; hp = maxHp = 6; coins = 0; damage = 1; fireInterval = 0.34; moveSpeed = 3.45;
+  playTime = 0; roomVisits = 0; clears = 0; kills = 0; fireTimer = 0; invuln = 0;
+  upgrades = []; events = []; floorMaps = []; bossOrder = null;
+  keys.clear(); mouse.down = false; aim = { x: 0, y: -1 };
+  hero = { x: 0, y: 1.7, walk: 0, attackT: 0, hitT: 0, deadT: 0, moving: false };
+  $('startOverlay').classList.add('hidden');
+  $('resultOverlay').classList.add('hidden');
+  $('pauseOverlay').classList.add('hidden');
+  $('bossintro').classList.add('hidden');
+  $('bossbar').classList.add('hidden');
+  $('transition').style.opacity = 0;
+  newFloor();
+  record('start', { seed });
+  updateHUD();
+}
+function end(won) {
+  mode = won ? 'won' : 'lost';
+  keys.clear(); mouse.down = false; shots = [];
+  $('resultTitle').textContent = won ? '목표 층에 도달했습니다' : '꿈이 잠시 흐려졌습니다';
+  $('resultReason').textContent = won ? '더 강해진 당신은 다음 꿈으로 나아갑니다.' : '체력이 0이 되었습니다. 경고 원과 탄 사이의 틈을 기억해 보세요.';
+  $('resultKicker').textContent = won ? '3층 도달 · 이번 시험 구간 성공' : '체력 0 · 다시 찾을 수 있는 길';
+  $('resultStats').innerHTML = `도달 <b>${floor}층</b> · 탐험한 방 <b>${roomVisits}</b> · 처치 <b>${kills}</b><br>시간 <b>${Math.floor(playTime / 60)}분 ${Math.floor(playTime % 60)}초</b> · 코인 <b>${coins}</b> · 강화 <b>${upgrades.length}개</b><br>꿈 번호 <b>${seed.replace(/[<>]/g, '')}</b>`;
+  $('resultOverlay').classList.remove('hidden');
+  $('transition').style.opacity = 0;
+  record(won ? 'success' : 'failure', { playTime, roomVisits, kills, upgrades: upgrades.length });
+}
+function pause() {
+  if (mode === 'play') {
+    mode = 'paused';
+    keys.clear(); mouse.down = false;
+    $('pauseOverlay').classList.remove('hidden');
+  } else if (mode === 'paused') {
+    mode = 'play';
+    $('pauseOverlay').classList.add('hidden');
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawRoom() {
+  const th = THEME[current.type] || THEME.combat;
+  const accent = hex(th.accent);
+  ctx.fillStyle = '#07090d';
+  ctx.fillRect(-8, -7, 16, 14);
+  ctx.fillStyle = '#243044';
+  ctx.fillRect(-RX - 0.6, -RY - 0.6, 2 * RX + 1.2, 2 * RY + 1.2);
+  ctx.fillStyle = hex(th.tile);
+  ctx.fillRect(-RX, -RY, 2 * RX, 2 * RY);
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 0.02;
+  for (let x = -RX; x <= RX; x += 1) { ctx.beginPath(); ctx.moveTo(x, -RY); ctx.lineTo(x, RY); ctx.stroke(); }
+  for (let y = -RY; y <= RY; y += 1) { ctx.beginPath(); ctx.moveTo(-RX, y); ctx.lineTo(RX, y); ctx.stroke(); }
+  for (const d of doors) {
+    const c = DOOR_CENTER(d.dir);
+    const gap = d.dir === 'N' ? [-1.05, -RY - 0.6, 2.1, 0.6] : d.dir === 'S' ? [-1.05, RY, 2.1, 0.6] : d.dir === 'E' ? [RX, -1.05, 0.6, 2.1] : [-RX - 0.6, -1.05, 0.6, 2.1];
+    ctx.fillStyle = '#0b0e14';
+    ctx.fillRect(...gap);
+    const nb = map.rooms[d.id];
+    const locked = roomLocked();
+    const col = locked ? '#9a4a4a' : hex((THEME[nb.type] || THEME.combat).accent);
+    const vertical = d.dir === 'N' || d.dir === 'S';
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 0.08;
+    ctx.beginPath();
+    ctx.ellipse(c[0], c[1], vertical ? 0.95 : 0.42, vertical ? 0.42 : 0.95, 0, 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = '#0b0e14';
+    ctx.beginPath();
+    ctx.ellipse(c[0], c[1], vertical ? 0.9 : 0.38, vertical ? 0.38 : 0.9, 0, 0, TAU);
+    ctx.fill();
+    const inner = d.dir === 'N' ? [0, -RY + 0.5] : d.dir === 'S' ? [0, RY - 0.5] : d.dir === 'E' ? [RX - 0.6, 0.1] : [-RX + 0.6, 0.1];
+    let txt = locked ? '전투 중 · 잠김' : nb.type === 'secret' && !nb.visited ? '???' : ({ combat: '전투', risk: '! 도전 · 보상', treasury: '★ 보물', sanctuary: '$ 상점', exit: '☠ 보스', start: '첫 방', secret: '? 비밀', trap: '▲ 가시' })[nb.type];
+    if (!locked && nb.cleared) txt += ' · 정리됨';
+    ctx.fillStyle = '#e8f1fa';
+    ctx.font = '0.3px "Malgun Gothic", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, inner[0], inner[1]);
+  }
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 0.1;
+  ctx.strokeRect(-RX, -RY, 2 * RX, 2 * RY);
+}
+function DOOR_CENTER(dir) {
+  return dir === 'N' ? [0, -RY] : dir === 'S' ? [0, RY] : dir === 'E' ? [RX, 0] : [-RX, 0];
+}
+
+function drawDecor() {
+  for (const it of decor) {
+    ctx.save();
+    ctx.translate(it.x, it.y);
+    if (it.k === 'rock') {
+      ctx.fillStyle = '#566179';
+      ctx.beginPath();
+      for (let k = 0; k < 7; k++) { const a = k * TAU / 7; const rr = 0.3 * it.s; k ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(rr, 0); }
+      ctx.closePath(); ctx.fill();
+    } else if (it.k === 'candle') {
+      ctx.fillStyle = '#d8cbb0'; ctx.fillRect(-0.06, -0.2, 0.12, 0.34);
+      const f = 0.85 + Math.sin(elapsed * 9 + it.x) * 0.15;
+      ctx.fillStyle = `rgba(255,179,71,${0.9 * f})`; ctx.beginPath(); ctx.ellipse(0, -0.28, 0.09, 0.16 * f, 0, 0, TAU); ctx.fill();
+    } else if (it.k === 'pillar') {
+      ctx.fillStyle = '#3d4a63'; ctx.fillRect(-0.3, -0.3, 0.6, 0.6);
+    } else if (it.k === 'web') {
+      ctx.rotate(it.a);
+      ctx.strokeStyle = 'rgba(207,215,215,0.3)'; ctx.lineWidth = 0.03;
+      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(k * 0.5) * 0.9, Math.sin(k * 0.5) * 0.9); ctx.stroke(); }
+    } else if (it.k === 'spike') {
+      ctx.fillStyle = '#d9d2c0';
+      ctx.beginPath(); ctx.moveTo(-0.3, 0.2); ctx.lineTo(0, -0.35); ctx.lineTo(0.3, 0.2); ctx.closePath(); ctx.fill();
+    } else if (it.k === 'pedestal') {
+      ctx.fillStyle = '#c9a95c'; ctx.beginPath(); ctx.ellipse(0, 0, 0.52, 0.3, 0, 0, TAU); ctx.fill();
+    } else if (it.k === 'counter') {
+      ctx.fillStyle = '#6b4f37'; ctx.fillRect(-1.7, -0.25, 3.4, 0.5);
+    }
+    ctx.restore();
+  }
+}
+
+function drawPortalExit() {
+  ctx.save();
+  ctx.translate(0, -1.8);
+  ctx.strokeStyle = 'rgba(139,63,208,0.9)';
+  ctx.lineWidth = 0.12;
+  ctx.beginPath(); ctx.ellipse(0, 0, 0.9, 1.1, 0, 0, TAU); ctx.stroke();
+  ctx.rotate(elapsed * 1.5);
+  ctx.strokeStyle = 'rgba(179,111,240,0.7)';
+  ctx.lineWidth = 0.1;
+  ctx.beginPath(); ctx.arc(0, 0, 0.5, 0, Math.PI * 1.5); ctx.stroke();
+  ctx.restore();
+}
+function drawShrine() {
+  const f = 0.75 + Math.sin(elapsed * 3) * 0.1;
+  ctx.fillStyle = `rgba(134,232,206,${0.25 * f})`;
+  ctx.beginPath(); ctx.arc(0, -0.5, 0.9, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#d9b44a';
+  ctx.beginPath(); ctx.arc(0, -0.5, 0.2, 0, TAU); ctx.fill();
+}
+
+function drawPickups() {
+  for (const p of current.pickups || []) {
+    if (p.collected) continue;
+    ctx.save();
+    ctx.translate(p.x, p.y + Math.sin(elapsed * 2 + p.phase) * 0.035);
+    if (p.kind === 'coins') {
+      ctx.fillStyle = '#e9cb83'; ctx.beginPath(); ctx.arc(0, 0, 0.16, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fff3c4'; ctx.beginPath(); ctx.arc(-0.04, -0.05, 0.05, 0, TAU); ctx.fill();
+    } else if (p.kind === 'heal') {
+      ctx.fillStyle = '#ec786f'; ctx.beginPath(); ctx.arc(-0.08, -0.04, 0.1, 0, TAU); ctx.arc(0.08, -0.04, 0.1, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-0.18, 0); ctx.lineTo(0.18, 0); ctx.lineTo(0, 0.2); ctx.closePath(); ctx.fill();
+    } else {
+      ctx.fillStyle = '#6f4a22'; ctx.fillRect(-0.16, -0.2, 0.32, 0.4);
+      ctx.fillStyle = '#e9cb83'; ctx.fillRect(-0.02, -0.2, 0.04, 0.4);
+    }
+    ctx.restore();
+  }
+}
+
+let VX = 0, VY = 0;
+const circleCache = new Map();
+function circleGrid(r) {
+  if (!circleCache.has(r)) {
+    const g = [];
+    for (let y = -r; y <= r; y++) {
+      const row = [];
+      for (let x = -r; x <= r; x++) row.push(x * x + y * y <= r * r + r * 0.5 ? '#' : '.');
+      g.push(row);
+    }
+    circleCache.set(r, g);
+  }
+  return circleCache.get(r).map(row => row.slice());
+}
+function put(g, y, x, c) {
+  if (y >= 0 && y < g.length && x >= 0 && x < g[y].length) g[y][x] = c;
+}
+function makeSprite(rows) {
+  const h = rows.length, w = rows[0].length;
+  const at = (x, y) => (x >= 0 && y >= 0 && x < w && y < h ? rows[y][x] : '.');
+  const out = [];
+  for (let y = -1; y <= h; y++) {
+    let line = '';
+    for (let x = -1; x <= w; x++) {
+      if (at(x, y) !== '.') { line += at(x, y); continue; }
+      const near = at(x - 1, y) !== '.' || at(x + 1, y) !== '.' || at(x, y - 1) !== '.' || at(x, y + 1) !== '.';
+      line += near ? 'o' : '.';
+    }
+    out.push(line);
+  }
+  return out;
+}
+function spriteFrom(g) {
+  return makeSprite(g.map(row => row.join('')));
+}
+function blit(rows, cx, by, colorOf) {
+  const w = rows[0].length, h = rows.length;
+  const x0 = Math.round(VX + cx * S - w / 2), y0 = Math.round(VY + by * S - h);
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const ch = rows[j][i];
+      if (ch === '.') continue;
+      entCtx.fillStyle = colorOf(ch);
+      entCtx.fillRect(x0 + i, y0 + j, 1, 1);
+    }
+  }
+}
+
+const HERO_MASK = [
+  '......####......',
+  '....########....',
+  '...##########...',
+  '...##########...',
+  '...##########...',
+  '...##########...',
+  '....dddddddd....',
+  '......####......',
+  '................',
+  '....#o####o#....',
+  '....#o####o#....',
+  '......dddd......',
+  '......#..#......',
+  '......#..#......'
+];
+function heroRows() {
+  const g = HERO_MASK.map(r => r.split(''));
+  if (hero.moving) {
+    const lift = Math.sin(hero.walk) > 0;
+    const lc = lift ? 6 : 9;
+    g[12][lc] = '.';
+    g[12][lc + 1] = '.';
+    const arm = lift ? 11 : 4;
+    g[10][arm] = '.';
+  }
+  put(g, 5, 3, 'p'); put(g, 5, 12, 'p');
+  for (const x of [5, 9]) {
+    if (hero.firing) {
+      put(g, 4, x, 'i'); put(g, 4, x + 1, 'i');
+    } else {
+      put(g, 3, x, 'w'); put(g, 3, x + 1, 'i'); put(g, 4, x, 'i'); put(g, 4, x + 1, 'i'); put(g, 5, x, 'i'); put(g, 5, x + 1, 'i');
+    }
+  }
+  if (hero.firing) {
+    put(g, 6, 7, 'i'); put(g, 6, 8, 'i'); put(g, 7, 7, 'i'); put(g, 7, 8, 'i');
+    const t = Math.floor(elapsed * 6) % 2 ? 4 : 5;
+    put(g, t, 5, 't'); put(g, t, 10, 't');
+  } else {
+    put(g, 6, 7, 'i'); put(g, 6, 8, 'i');
+  }
+  return makeSprite(g.map(row => row.join('')));
+}
+function drawHero() {
+  if (mode !== 'dying' && invuln > 0 && Math.floor(elapsed * 15) % 2 === 0) return;
+  const dying = mode === 'dying';
+  entCtx.globalAlpha = dying ? Math.max(0, 1 - hero.deadT) : 1;
+  const skin = hero.hitT > 0 ? '#ec786f' : '#e9b2ad';
+  const colors = { o: '#000000', '#': skin, d: '#d4918d', p: '#f2a6a6', L: '#c8868a', i: '#151b26', w: '#f7fafe', t: '#73dcf0' };
+  blit(heroRows(), hero.x, hero.y + 0.45, ch => colors[ch] || skin);
+  entCtx.globalAlpha = 1;
+}
+
+function enemyRows(r) {
+  const g = circleGrid(r);
+  put(g, r - 1, r - 2, 'i');
+  put(g, r - 1, r + 2, 'i');
+  return spriteFrom(g);
+}
+function drawEnemy(e) {
+  const fade = e.dead ? Math.max(0, 1 - e.age) : 1;
+  if (fade <= 0) return;
+  entCtx.globalAlpha = fade;
+  const body = e.hit > 0 ? '#ffffff' : e.style === 'chase' ? '#d9534f' : e.style === 'dash' ? '#f0c040' : '#8e7cc3';
+  blit(enemyRows(4), e.x, e.y + 0.4, ch => (ch === 'o' ? '#0b0e14' : ch === 'i' ? '#151b26' : body));
+  if (!e.dead) {
+    const px = Math.round(VX + e.x * S - 5), py = Math.round(VY + e.y * S - 8);
+    entCtx.fillStyle = '#2a1218';
+    entCtx.fillRect(px, py, 10, 2);
+    entCtx.fillStyle = '#ec786f';
+    entCtx.fillRect(px, py, Math.max(0, Math.round(10 * e.hp / e.maxHp)), 2);
+  }
+  entCtx.globalAlpha = 1;
+}
+
+function bossRows(r, dx, dy) {
+  const g = circleGrid(r);
+  const c = r;
+  for (let y = c - Math.round(r * 0.5); y < c; y++) {
+    for (let x = c - Math.round(r * 0.4); x <= c + Math.round(r * 0.4); x++) put(g, y, x, 'w');
+  }
+  const px = Math.round(dx * 2), py = Math.round(dy * 2);
+  for (let y = c - 2 + py; y <= c - 1 + py; y++) {
+    for (let x = c - 1 + px; x <= c + px; x++) put(g, y, x, 'i');
+  }
+  return spriteFrom(g);
+}
+function drawBoss(e) {
+  const fade = e.dead ? Math.max(0, 1 - e.age) : 1;
+  if (fade <= 0) return;
+  entCtx.globalAlpha = fade;
+  const r = Math.max(4, Math.round(e.scale * 0.5 * S));
+  if (e.tell > 0 && Math.floor(elapsed * 12) % 2 === 0) {
+    entCtx.fillStyle = '#ec786f';
+    for (let k = 0; k < 40; k++) {
+      const a = k * TAU / 40, rr = r + 3;
+      entCtx.fillRect(Math.round(VX + e.x * S + Math.cos(a) * rr), Math.round(VY + e.y * S + Math.sin(a) * rr), 1, 1);
+    }
+  }
+  if (e.burrowed) {
+    blit(spriteFrom(circleGrid(r)), e.x, e.y + 0.4, ch => (ch === 'o' ? '#0b0e14' : '#6f4a22'));
+  } else {
+    const body = hex(e.cfg.tint);
+    const d = dirTo(e);
+    const colors = { o: '#0b0e14', '#': e.hit > 0 ? '#ffffff' : body, w: '#f7fafe', i: '#151b26' };
+    blit(bossRows(r, d.x, d.y), e.x, e.y + 0.4, ch => colors[ch] || body);
+  }
+  entCtx.globalAlpha = 1;
+}
+
+function drawShots() {
+  for (const s of shots) {
+    const x = Math.round(VX + s.x * S), y = Math.round(VY + s.y * S);
+    entCtx.fillStyle = s.friendly ? '#73dcf0' : '#ff7a6b';
+    const n = s.friendly ? 2 : 3;
+    entCtx.fillRect(x - Math.floor(n / 2), y - Math.floor(n / 2), n, n);
+  }
+}
+
+function drawEffects() {
+  for (const e of effects) {
+    const k = e.t / e.total;
+    ctx.strokeStyle = hex(e.color);
+    ctx.globalAlpha = Math.max(0, k * 0.7);
+    ctx.lineWidth = 0.08;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.size * (1 + (1 - k) * 0.35), 0, TAU);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function updateEffects(dt) {
+  for (const e of effects) e.t -= dt;
+  effects = effects.filter(e => e.t > 0);
+}
+
+const PALETTE = ['0b0e14', '07090d', '243044', '1a2330', '181c24', '2a1f10', '122218', '2a1214', '1d1028', '181226', '27200d', 'e9b2ad', 'c8868a', '151b26', 'f7fafe', '73dcf0', '8e7cc3', 'd9534f', 'f0c040', 'd9b3ff', 'a8e0b0', 'ff9a9a', 'c9a46a', '8fd3ff', '9a9aff', '5c0b10', 'ec786f', 'e9cb83', 'ff7a6b', '2a1218', '6f4a22', '4c3016', '566179', '3d4a63', '6b4f37', 'c9a95c', 'd8cbb0', 'ffb347', 'd9d2c0', 'ffffff', '2b3a55', '111111', 'd9b44a', '86e8ce', 'b36ff0', '8a6fd0', '5fbfa0', 'e58980', 'eaa18b', '86e9f7', 'e0c26b', '8b3fd0', 'c4483f', '4a2b2e', '9a4a4a', 'cfd7d7', 'b98ad0', 'e8f1fa', '0a0e15', '8195ae', '9aa7b8', 'a98ae0', '2a3550', '3a4c61'];
+const toPal = list => list.map(h => [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]);
+const ROOM_PAL = toPal(PALETTE);
+const ENT_PAL = toPal(['0b0e14', 'e9b2ad', 'c8868a', 'f7fafe', '73dcf0', '8e7cc3', 'd9534f', 'f0c040', 'd9b3ff', 'a8e0b0', 'ff9a9a', 'c9a46a', '8fd3ff', '9a9aff', 'ffffff', 'ec786f', 'ff7a6b', 'e9cb83', 'ffb347', '2a1218', '5c0b10', '9a4a4a', 'b36ff0', '6f4a22']);
+const roomCache = new Map(), entCache = new Map();
+function snap(r, g, b, pal, cache) {
+  const key = (r << 16) | (g << 8) | b;
+  let c = cache.get(key);
+  if (c === undefined) {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < pal.length; i++) {
+      const p = pal[i], dr = p[0] - r, dg = p[1] - g, db = p[2] - b, dd = dr * dr + dg * dg + db * db;
+      if (dd < bestD) { bestD = dd; best = i; }
+    }
+    c = pal[best];
+    cache.set(key, c);
+  }
+  return c;
+}
+function crisp(c, pal, cache) {
+  const img = c.getImageData(0, 0, PW, PH), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 160) { d[i + 3] = 0; continue; }
+    const q = snap(d[i], d[i + 1], d[i + 2], pal, cache);
+    d[i] = q[0];
+    d[i + 1] = q[1];
+    d[i + 2] = q[2];
+    d[i + 3] = 255;
+  }
+  c.putImageData(img, 0, 0);
+}
+function outlined(fn) {
+  ctx.save();
+  ctx.shadowColor = '#0b0e14';
+  ctx.shadowBlur = 0;
+  for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    ctx.shadowOffsetX = x;
+    ctx.shadowOffsetY = y;
+    fn();
+  }
+  ctx.restore();
+  fn();
+}
+function draw() {
+  const sh = shake > 0 ? (Math.random() - 0.5) * 0.12 * S : 0;
+  ctx = pixCtx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, PW, PH);
+  ctx.setTransform(S, 0, 0, S, OX + sh, OY);
+  if (current && map) {
+    drawRoom();
+    for (const d of decals) {
+      ctx.fillStyle = 'rgba(92,11,16,0.85)';
+      ctx.beginPath(); ctx.ellipse(d.x, d.y, 0.5 * d.s * 0.5, 0.4 * d.s * 0.5, 0, 0, TAU); ctx.fill();
+    }
+    drawDecor();
+    if (current.type === 'exit') drawPortalExit();
+    if (current.type === 'sanctuary') drawShrine();
+    drawPickups();
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  crisp(pixCtx, ROOM_PAL, roomCache);
+  ctx = entCtx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, PW, PH);
+  VX = OX + sh;
+  VY = OY;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (current && map) {
+    const ents = [];
+    for (const e of enemies) ents.push({ y: e.y, draw: () => (e.boss ? drawBoss(e) : drawEnemy(e)) });
+    if (mode !== 'loading') ents.push({ y: hero.y, draw: drawHero });
+    ents.sort((a, b) => a.y - b.y);
+    for (const it of ents) it.draw();
+    drawShots();
+    ctx.setTransform(S, 0, 0, S, VX, VY);
+    drawEffects();
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  crisp(entCtx, ENT_PAL, entCache);
+  ctx = pixCtx;
+  pixCtx.drawImage(ent, 0, 0);
+  out.setTransform(1, 0, 0, 1, 0, 0);
+  out.imageSmoothingEnabled = false;
+  out.clearRect(0, 0, cv.width, cv.height);
+  out.drawImage(pix, DX, DY, PW * K, PH * K);
+  if (damageFlash > 0) {
+    out.fillStyle = `rgba(236,120,111,${damageFlash * 1.5})`;
+    out.fillRect(0, 0, cv.width, cv.height);
+  }
+}
+
+function drawMap() {
+  if (!map || !current) return;
+  const c = mctx, w = 360, h = 252;
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = '#07090d';
+  c.fillRect(0, 0, w, h);
+  const xs = map.rooms.map(r => r.x), ys = map.rooms.map(r => r.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const step = Math.min(52, 280 / (maxX - minX + 1), 195 / (maxY - minY + 1));
+  const seen = new Set();
+  for (const r of map.rooms) {
+    if (!r.visited) continue;
+    seen.add(r.id);
+    for (const id of Object.values(r.neighbors)) {
+      const q = map.rooms[id];
+      if (q && (q.type !== 'secret' || q.visited)) seen.add(id);
+    }
+  }
+  const rw = Math.max(14, Math.min(32, step - 4)), rh = rw * 0.8;
+  const pos = r => [180 + (r.x - cx) * step, 124 + (r.y - cy) * step];
+  c.lineWidth = 3;
+  for (const r of map.rooms) {
+    if (!seen.has(r.id)) continue;
+    const [x, y] = pos(r);
+    for (const id of Object.values(r.neighbors)) {
+      if (!seen.has(id)) continue;
+      const [xx, yy] = pos(map.rooms[id]);
+      c.strokeStyle = '#4c3a3d';
+      c.beginPath(); c.moveTo(x, y); c.lineTo(xx, yy); c.stroke();
+    }
+  }
+  for (const r of map.rooms) {
+    if (!seen.has(r.id)) continue;
+    const [x, y] = pos(r);
+    const isCur = r.id === current.id;
+    c.fillStyle = isCur ? '#73dcf0' : r.cleared ? '#3a5a7a' : r.visited ? '#243c56' : '#0a0e15';
+    c.fillRect(x - rw / 2, y - rh / 2, rw, rh);
+    c.lineWidth = 4;
+    c.strokeStyle = '#0a111c';
+    c.strokeRect(x - rw / 2, y - rh / 2, rw, rh);
+    c.lineWidth = 2;
+    c.strokeStyle = isCur ? '#eafcff' : ({ start: '#73dcf0', risk: '#e58980', treasury: '#e9cb83', sanctuary: '#86e8ce', exit: '#b36ff0', secret: '#a98ae0', trap: '#e0c26b' })[r.type] || '#8195ae';
+    c.strokeRect(x - rw / 2, y - rh / 2, rw, rh);
+    if (isCur) {
+      c.lineWidth = 2;
+      c.strokeStyle = 'rgba(115,220,240,' + (0.2 + 0.4 * (0.5 + 0.5 * Math.sin(elapsed * 5.5))).toFixed(3) + ')';
+      c.strokeRect(x - rw / 2 - 3, y - rh / 2 - 3, rw + 6, rh + 6);
+    }
+    drawRoomIcon(c, r, x, y, rw, rh);
+  }
+}
+function drawRoomIcon(c, r, x, y, rw, rh) {
+  const s = Math.min(rw, rh) / 22;
+  c.save();
+  c.translate(x, y);
+  c.scale(s, s);
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.lineWidth = 1.4;
+  if (r.type === 'treasury') {
+    c.fillStyle = '#6f4a22'; c.fillRect(-8, -1, 16, 8);
+    c.fillStyle = '#4c3016'; c.fillRect(-8, -7, 16, 6);
+    c.fillStyle = '#e9cb83'; c.fillRect(-2, -3, 4, 7);
+    c.strokeStyle = '#1d1208'; c.strokeRect(-8, -7, 16, 14);
+  } else if (r.type === 'sanctuary') {
+    c.fillStyle = '#d9b44a'; c.beginPath(); c.arc(0, 0, 7, 0, TAU); c.fill();
+    c.strokeStyle = '#6e4f14'; c.beginPath(); c.arc(0, 0, 7, 0, TAU); c.stroke();
+    c.fillStyle = '#f6e6ab'; c.beginPath(); c.arc(-2.2, -2.2, 2.2, 0, TAU); c.fill();
+  } else if (r.type === 'exit') {
+    c.fillStyle = '#e9e4da'; c.beginPath(); c.arc(0, -1.5, 7, 0, TAU); c.fill();
+    c.fillRect(-4.5, 3.5, 9, 4);
+    c.fillStyle = '#111318';
+    c.beginPath(); c.arc(-3, -2, 2, 0, TAU); c.fill();
+    c.beginPath(); c.arc(3, -2, 2, 0, TAU); c.fill();
+    c.fillRect(-1, 1.4, 2, 2.6);
+  } else if (r.type === 'secret') {
+    c.fillStyle = '#a98ae0'; c.font = 'bold 15px sans-serif'; c.fillText('?', 0, 1);
+  } else if (r.type === 'risk') {
+    c.fillStyle = '#e58980'; c.font = 'bold 15px sans-serif'; c.fillText('!', 0, 1);
+  } else if (r.type === 'trap') {
+    c.fillStyle = '#e0c26b';
+    c.beginPath(); c.moveTo(0, -7); c.lineTo(7, 6); c.lineTo(-7, 6); c.closePath(); c.fill();
+  } else if (r.type === 'start') {
+    c.fillStyle = '#73dcf0'; c.beginPath(); c.arc(0, 0, 4.5, 0, TAU); c.fill();
+  } else {
+    c.fillStyle = '#9aa7b8'; c.beginPath(); c.arc(0, 0, 2.4, 0, TAU); c.fill();
+  }
+  c.restore();
+}
+
+function updateStep(dt) {
+  invuln = Math.max(0, invuln - dt);
+  fireTimer -= dt;
+  roomCooldown = Math.max(0, roomCooldown - dt);
+  hero.attackT = Math.max(0, hero.attackT - dt);
+  hero.hitT = Math.max(0, hero.hitT - dt);
+  if (hero.moving) hero.walk += dt * 10;
+  updateInput(dt);
+  if (mode !== 'play') return;
+  for (const p of current.pickups || []) {
+    if (!p.collected && Math.hypot(p.x - hero.x, p.y - hero.y) < 0.6) {
+      if (p.kind === 'heal' && hp >= maxHp) continue;
+      collect(p);
+    }
+  }
+  if (!roomLocked() && roomCooldown <= 0) {
+    for (const d of doors) {
+      const inside = d.dir === 'N' ? hero.y < -4.03 && Math.abs(hero.x) < 1.05
+        : d.dir === 'S' ? hero.y > 4.03 && Math.abs(hero.x) < 1.05
+        : d.dir === 'E' ? hero.x > 5.52 && Math.abs(hero.y) < 1.05
+        : hero.x < -5.52 && Math.abs(hero.y) < 1.05;
+      if (inside) { enterRoom(d.id, OPP[d.dir]); return; }
+    }
+  }
+  updateEnemies(dt);
+  if (mode !== 'play') return;
+  updateShots(dt);
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last) / 1000, 0.045);
+  last = now;
+  elapsed += dt;
+  if (mode === 'play') {
+    playTime += dt;
+    updateStep(dt);
+  } else if (mode === 'floorTransition') {
+    transitionTime -= dt;
+    $('transition').style.opacity = transitionTime < 0.75 ? 1 : 0;
+    if (transitionTime <= 0) {
+      floor++;
+      record('floorChanged', { floor });
+      if (floor >= 3) end(true);
+      else { newFloor(); mode = 'play'; $('transition').style.opacity = 0; updateHUD(); }
+    }
+  } else if (mode === 'bossIntro') {
+    bossIntroTime -= dt;
+    if (bossIntroTime <= 0) {
+      $('bossintro').classList.add('hidden');
+      spawnBoss();
+      mode = 'play';
+      updateHUD();
+    }
+  } else if (mode === 'dying') {
+    hero.deadT += dt;
+    transitionTime -= dt;
+    if (transitionTime <= 0) end(false);
+  }
+  if (mode === 'play' || mode === 'paused' || mode === 'bossIntro') updateEffects(dt);
+  toastTime -= dt;
+  if (toastTime <= 0) $('toast').classList.remove('show');
+  damageFlash = Math.max(0, damageFlash - dt);
+  shake = Math.max(0, shake - dt);
+  if (boss && boss.dead) {
+    boss = enemies.find(x => x.boss && !x.dead) || boss;
+  }
+  if (boss) {
+    if (boss.dead) $('bossbar').classList.add('hidden');
+    else $('bosshpf').style.width = Math.max(0, boss.hp / boss.maxHp * 100) + '%';
+  }
+  draw();
+  drawMap();
+}
+
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
+  if (e.code === 'Escape' && !e.repeat) { pause(); return; }
+  if (mode === 'play') {
+    keys.add(e.code);
+    if (e.code === 'KeyE' && !e.repeat) doInteract();
+  }
+});
+addEventListener('keyup', e => keys.delete(e.code));
+addEventListener('blur', () => { keys.clear(); mouse.down = false; if (mode === 'play') pause(); });
+cv.addEventListener('pointermove', e => { mouse.known = true; mouse.x = e.clientX; mouse.y = e.clientY; });
+cv.addEventListener('pointerdown', e => {
+  if (e.button === 0 && mode === 'play') { mouse.down = true; mouse.known = true; mouse.x = e.clientX; mouse.y = e.clientY; }
+});
+addEventListener('pointerup', () => { mouse.down = false; });
+addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('resize', resize);
+
+$('start').onclick = () => {
+  audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+  audio.resume();
+  start($('seedInput').value);
+};
+$('sameSeed').onclick = () => start(seed);
+$('newSeed').onclick = () => {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  start(String(values[0]));
+};
+$('resume').onclick = pause;
+$('mute').onclick = () => {
+  muted = !muted;
+  $('mute').textContent = muted ? '소리 꺼짐' : '소리 켜짐';
+};
+
+resize();
+$('start').disabled = false;
+$('loadnote').textContent = '준비 완료 · 인터넷 연결 없이 실행됩니다';
+mode = 'menu';
+window.__gameTest = Object.freeze({ snapshot: () => ({ ready: true, mode, seed, floor, hp, maxHp, coins, damage, kills, room: current ? { id: current.id, type: current.type, cleared: current.cleared } : null, enemies: enemies.filter(e => !e.dead).length, boss: boss ? { name: boss.cfg ? boss.cfg.name : null, hp: boss.hp } : null }) });
+requestAnimationFrame(frame);
+})();
